@@ -29,6 +29,7 @@ uv run bank-buddy account add \
   --type checking \
   --currency USD
 uv run bank-buddy account list
+uv run bank-buddy import --file path/to/boa.csv --account-id 1
 ```
 
 Run tests:

@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added explicit Bank of America CSV imports with transaction hashing,
+  duplicate skipping, import attempt records, and CLI summaries.
 - Added minimal account setup commands for creating and listing configured bank
   accounts before imports.
 - Added a project `Brewfile` and Base manifest delegation so
