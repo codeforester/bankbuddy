@@ -3,5 +3,7 @@ schema_version: 1
 project:
   name: bankbuddy
 
+brewfile: Brewfile
+
 test:
   command: ./tests/validate.sh
