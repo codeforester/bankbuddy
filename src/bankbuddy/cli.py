@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from bankbuddy import __version__
@@ -10,6 +12,8 @@ from bankbuddy.accounts import add_account
 from bankbuddy.accounts import list_accounts
 from bankbuddy.accounts import masked_account_number
 from bankbuddy.database import initialize_database
+from bankbuddy.imports import ImportFailure
+from bankbuddy.imports import import_boa_csv
 from bankbuddy.paths import resolve_app_paths
 
 
@@ -118,3 +122,28 @@ def account_list() -> None:
             f"{account.account_type}  {account.currency}  "
             f"{masked_account_number(account.account_number)}"
         )
+
+
+@main.command("import")
+@click.option(
+    "--file",
+    "file_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="CSV file to import.",
+)
+@click.option("--account-id", required=True, type=int, help="Configured account id.")
+def import_command(file_path: Path, account_id: int) -> None:
+    """Import an explicit statement file."""
+
+    paths = resolve_app_paths()
+    try:
+        summary = import_boa_csv(paths, file_path, account_id=account_id)
+    except ImportFailure as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    click.echo(f"File: {summary.file_name}")
+    click.echo(f"Bank: {summary.bank_name} | Account ID: {summary.account_id}")
+    click.echo(f"Rows parsed: {summary.rows_parsed}")
+    click.echo(f"Rows imported: {summary.rows_imported}")
+    click.echo(f"Duplicate rows skipped: {summary.rows_skipped_duplicate}")
