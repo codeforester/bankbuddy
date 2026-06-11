@@ -7,10 +7,12 @@ control of their financial data without relying on third-party services.
 
 **Changelog:**
 - v1.2: Confirmed Python plus `uv`/`pyproject.toml` as the core project
-  contract; narrowed Phase 1 to a reliable Bank of America CSV vertical slice;
-  revised money storage to integer minor units; split file tracking from import
-  attempts; moved PDF password handling, transfer matching, ML, LLM, web, and
-  iOS work into later phases; added privacy and retry guardrails.
+  contract; made multi-currency data support part of the first implementation;
+  narrowed Phase 1 parsing to a reliable Bank of America CSV vertical slice;
+  revised money storage to integer minor units; confirmed that actual account
+  numbers are stored in `accounts`; split file tracking from import attempts;
+  moved PDF password handling, transfer matching, ML, LLM, web, and iOS work
+  into later phases; added privacy and retry guardrails.
 - v1.1: Added account type inference during import; added transaction-level
   deduplication via `transaction_hash`; updated import flow and bank/account
   inference strategy.
@@ -61,6 +63,9 @@ focused on the financial domain rather than infrastructure.
   lint/test configuration, and Python version constraints.
 - Use `uv sync` to create the local environment and `uv run ...` for commands.
 - Expose the CLI as a console script named `bank-buddy`.
+- Treat currency as a first-class domain value from the first implementation:
+  schema, parsing, formatting, reports, and budgets must carry ISO currency
+  codes even when only one parser is implemented.
 - Use a `src/` layout:
 
   ```text
@@ -93,12 +98,13 @@ focused on the financial domain rather than infrastructure.
 
 ## 3. Supported Banks & Currencies
 
-### Phase 1 Bank
+### Phase 1 Parser
 
 - Bank of America (USA) — CSV export only
 
-Phase 1 intentionally supports one bank and one file format. The first
-milestone should prove end-to-end correctness before broadening parser support.
+Phase 1 intentionally supports one bank and one file format for parsing. The
+first milestone should prove end-to-end correctness before broadening parser
+support.
 
 ### Later Banks
 
@@ -107,12 +113,16 @@ milestone should prove end-to-end correctness before broadening parser support.
 
 ### Currencies
 
-- Phase 1: USD
-- Phase 2: INR
+- Supported from the first implementation: USD and INR
 - Future: Additional currencies can be added
 
-No cross-currency consolidation happens in early phases. Budgets and reports
-are per-currency unless a later design explicitly adds conversion.
+Multi-currency support means the schema, import normalization, reports, and
+budgets always carry a currency code. It does not mean every bank parser exists
+in Phase 1. Bank of America imports produce USD transactions first; HDFC and
+ICICI add INR statement parsing in a later phase.
+
+No cross-currency consolidation happens in early phases. Budgets and reports are
+per-currency unless a later design explicitly adds conversion.
 
 ### Adding New Banks
 
@@ -184,9 +194,10 @@ is needed.
 |---|---|---|
 | `account_id` | INTEGER PK | Surrogate key |
 | `bank_id` | INTEGER FK | References `banks.bank_id` |
-| `account_number` | TEXT NOT NULL | Prefer masked/last-four form when available |
+| `account_number` | TEXT NOT NULL | Actual account number, not masked |
 | `account_type` | TEXT NOT NULL | "checking", "savings", "cd", "credit_card", "investment" |
 | `currency` | TEXT NOT NULL | ISO code |
+| `statement_account_ref` | TEXT | Optional parser-visible reference such as masked number or last four |
 | `display_name` | TEXT | Optional user-friendly account label |
 | `created_at` | DATETIME NOT NULL | |
 | `updated_at` | DATETIME NOT NULL | |
@@ -196,6 +207,11 @@ is needed.
 Account type is inferred by the bank-specific parser when the statement has a
 reliable signal. If account type cannot be inferred, the command should allow a
 clear user override rather than silently guessing.
+
+Bank Buddy stores the actual account number so account identity is unambiguous.
+If a statement exposes only a masked number or last-four value, the import flow
+must map that parser-visible value to a configured account rather than storing
+the masked value as the account number.
 
 ### 5.3 `categories`
 
@@ -577,6 +593,7 @@ Early implementation should include:
 - `bank-buddy export sqlite --output FILE`
 - schema migrations that are repeatable and testable
 - import summaries that make skipped rows visible
+- clear warning that local database/export files contain actual account numbers
 - no destructive correction flows without confirmation
 
 Cloud sync and automated backup are out of scope for early phases.
@@ -593,6 +610,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - test runner and baseline CI
 - SQLite connection and migration skeleton
 - app directory discovery
+- currency helpers for USD and INR parsing/formatting
 
 ### Phase 1 — Bank of America CSV Vertical Slice
 
@@ -601,6 +619,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - seed categories
 - Bank of America CSV parser
 - import explicit CSV file
+- USD and INR schema support, with the first parser producing USD transactions
 - transaction hash deduplication with visible summary
 - `tx list`
 - basic spending report
@@ -614,7 +633,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - retry failed imports
 - HDFC and ICICI PDF parser spikes using real samples
 - interactive PDF password prompt
-- INR support
+- INR import path through Indian bank parsers
 - transfer candidate detection
 
 ### Phase 3 — Categorization and Budgets
