@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added minimal account setup commands for creating and listing configured bank
+  accounts before imports.
 - Added a project `Brewfile` and Base manifest delegation so
   `basectl setup bankbuddy` can install `uv`.
 - Added packaged SQLite migrations for the core schema, including banks,
