@@ -4,6 +4,12 @@ Local-first personal finance tracking.
 
 ## Development
 
+Install project tools through Base:
+
+```bash
+basectl setup bankbuddy
+```
+
 Set up the Python environment with `uv`:
 
 ```bash

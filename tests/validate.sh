@@ -8,6 +8,7 @@ required_files=(
   .github/pull_request_template.md
   LICENSE
   base_manifest.yaml
+  Brewfile
   .github/workflows/tests.yml
   pyproject.toml
   src/bankbuddy/__init__.py
