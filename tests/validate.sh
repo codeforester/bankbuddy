@@ -9,6 +9,9 @@ required_files=(
   LICENSE
   base_manifest.yaml
   .github/workflows/tests.yml
+  pyproject.toml
+  src/bankbuddy/__init__.py
+  migrations/.gitkeep
 )
 
 for file in "${required_files[@]}"; do
@@ -19,3 +22,7 @@ for file in "${required_files[@]}"; do
 done
 
 printf 'Repository baseline is present.\n'
+
+if [[ -f pyproject.toml ]]; then
+  uv run pytest
+fi

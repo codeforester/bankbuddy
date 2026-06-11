@@ -1,6 +1,29 @@
 # bankbuddy
 
-Base-managed project bankbuddy.
+Local-first personal finance tracking.
+
+## Development
+
+Set up the Python environment with `uv`:
+
+```bash
+uv sync
+```
+
+Run the CLI:
+
+```bash
+uv run bank-buddy --help
+uv run bank-buddy status
+uv run bank-buddy init
+```
+
+Run tests:
+
+```bash
+uv run pytest
+./tests/validate.sh
+```
 
 ## Base
 
