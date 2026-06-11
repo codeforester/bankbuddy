@@ -22,6 +22,13 @@ Run the CLI:
 uv run bank-buddy --help
 uv run bank-buddy status
 uv run bank-buddy init
+uv run bank-buddy account add \
+  --bank "Bank of America" \
+  --country US \
+  --account-number "<actual-number>" \
+  --type checking \
+  --currency USD
+uv run bank-buddy account list
 ```
 
 Run tests:
