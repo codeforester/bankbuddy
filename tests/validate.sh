@@ -11,7 +11,8 @@ required_files=(
   .github/workflows/tests.yml
   pyproject.toml
   src/bankbuddy/__init__.py
-  migrations/.gitkeep
+  src/bankbuddy/migrations/__init__.py
+  src/bankbuddy/migrations/0001_core_schema.sql
 )
 
 for file in "${required_files[@]}"; do

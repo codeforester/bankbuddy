@@ -70,8 +70,8 @@ focused on the financial domain rather than infrastructure.
 
   ```text
   src/bankbuddy/
+    migrations/
   tests/
-  migrations/
   ```
 
 - Keep parsing, normalization, persistence, and CLI modules separate so bank
