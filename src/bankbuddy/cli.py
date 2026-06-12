@@ -16,6 +16,7 @@ from bankbuddy.database import initialize_database
 from bankbuddy.exports import ExportFailure
 from bankbuddy.exports import export_sqlite_database
 from bankbuddy.import_history import list_import_history
+from bankbuddy.inbox import import_inbox
 from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
@@ -422,6 +423,41 @@ def import_history_command(
             f"{row.finished_at or '-'}  {row.rows_parsed}  {row.rows_imported}  "
             f"{row.rows_skipped_duplicate}  {row.error_message or '-'}"
         )
+
+
+@import_command.command("inbox")
+@click.option("--account-id", required=True, type=int, help="Configured account id.")
+@click.pass_context
+def import_inbox_command(ctx: click.Context, account_id: int) -> None:
+    """Import supported files from the managed inbox."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths()
+    summary = import_inbox(paths, account_id=account_id, logger=runtime.log)
+    runtime.log.debug(
+        "import_inbox files=%s successful=%s failed=%s unsupported=%s",
+        summary.total_files,
+        summary.successful_files,
+        summary.failed_files,
+        summary.unsupported_files,
+    )
+    if summary.total_files == 0:
+        click.echo("No inbox files found.")
+        return
+
+    click.echo(f"Inbox files: {summary.total_files}")
+    click.echo(f"Successful: {summary.successful_files}")
+    click.echo(f"Failed: {summary.failed_files}")
+    click.echo(f"Unsupported: {summary.unsupported_files}")
+    for result in summary.results:
+        if result.status == "success":
+            click.echo(
+                f"success  {result.file_name}  parsed={result.rows_parsed} "
+                f"imported={result.rows_imported} "
+                f"duplicates={result.rows_skipped_duplicate}"
+            )
+        else:
+            click.echo(f"{result.status}  {result.file_name}  {result.message}")
 
 
 def run_statement_import(ctx: click.Context, file_path: Path, account_id: int) -> None:

@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added an `import inbox` command for processing supported statement files from
+  the managed inbox for an explicit account.
 - Added an `export sqlite` command for writing sensitive local SQLite
   backups with overwrite protection.
 - Added a `report spending` command for summarizing outgoing transactions by

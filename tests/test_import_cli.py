@@ -90,6 +90,88 @@ def test_import_file_command_reports_duplicate_summary(tmp_path) -> None:
     assert "Duplicate rows skipped: 2" in second.output
 
 
+def test_import_inbox_command_reports_success_and_removes_source(tmp_path) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    inbox_file = inbox / "statement.csv"
+    inbox_file.write_text(BOA_CSV, encoding="utf-8")
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(main, ["import", "inbox", "--account-id", "1"], env=env)
+
+    assert result.exit_code == 0
+    assert "Inbox files: 1" in result.output
+    assert "Successful: 1" in result.output
+    assert "success  statement.csv  parsed=2 imported=2 duplicates=0" in result.output
+    assert not inbox_file.exists()
+
+
+def test_import_inbox_command_reports_empty_state(tmp_path) -> None:
+    result = CliRunner().invoke(
+        main,
+        ["import", "inbox", "--account-id", "1"],
+        env={"BANKBUDDY_HOME": str(tmp_path / "home")},
+    )
+
+    assert result.exit_code == 0
+    assert "No inbox files found." in result.output
+
+
+def test_import_inbox_command_reports_unsupported_file(tmp_path) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    unsupported_file = inbox / "notes.txt"
+    unsupported_file.write_text("unsupported", encoding="utf-8")
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(main, ["import", "inbox", "--account-id", "1"], env=env)
+
+    assert result.exit_code == 0
+    assert "Unsupported: 1" in result.output
+    assert "unsupported  notes.txt  Unsupported import file type: .txt" in result.output
+    assert unsupported_file.is_file()
+
+
 def test_import_history_command_outputs_attempts(tmp_path) -> None:
     csv_path = tmp_path / "boa.csv"
     csv_path.write_text(BOA_CSV, encoding="utf-8")
