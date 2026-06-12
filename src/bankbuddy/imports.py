@@ -6,6 +6,7 @@ import csv
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
+import logging
 from pathlib import Path
 import re
 import sqlite3
@@ -151,11 +152,18 @@ def import_boa_csv(
     csv_path: Path,
     *,
     account_id: int,
+    logger: logging.Logger | None = None,
 ) -> ImportSummary:
     """Import a Bank of America CSV file for a configured account."""
 
     initialize_database(paths)
+    log_debug(logger, "source_format=boa_csv parse_start file_name=%s", csv_path.name)
     parsed_rows = parse_boa_csv(csv_path)
+    log_debug(
+        logger,
+        "source_format=boa_csv parse_finished rows_parsed=%s",
+        len(parsed_rows),
+    )
     return import_boa_transactions(
         paths,
         csv_path,
@@ -164,6 +172,7 @@ def import_boa_csv(
         source_format="boa_csv",
         import_label="CSV",
         require_pdf_account_match=False,
+        logger=logger,
     )
 
 
@@ -172,13 +181,22 @@ def import_boa_pdf(
     pdf_path: Path,
     *,
     account_id: int,
+    logger: logging.Logger | None = None,
 ) -> ImportSummary:
     """Import a Bank of America text-selectable PDF for a configured account."""
 
     initialize_database(paths)
+    log_debug(logger, "source_format=boa_pdf parse_start file_name=%s", pdf_path.name)
     text = extract_pdf_text(pdf_path)
+    log_debug(logger, "source_format=boa_pdf text_extracted characters=%s", len(text))
     parsed_rows = parse_boa_pdf_text(text)
     pdf_account_number = extract_boa_pdf_account_number(text)
+    log_debug(
+        logger,
+        "source_format=boa_pdf account_suffix=%s rows_parsed=%s",
+        account_number_suffix(pdf_account_number),
+        len(parsed_rows),
+    )
     return import_boa_transactions(
         paths,
         pdf_path,
@@ -188,6 +206,7 @@ def import_boa_pdf(
         import_label="PDF",
         require_pdf_account_match=True,
         pdf_account_number=pdf_account_number,
+        logger=logger,
     )
 
 
@@ -201,26 +220,59 @@ def import_boa_transactions(
     import_label: str,
     require_pdf_account_match: bool,
     pdf_account_number: str | None = None,
+    logger: logging.Logger | None = None,
 ) -> ImportSummary:
     """Persist parsed Bank of America transactions for a configured account."""
 
     file_hash = hash_file(import_path)
+    log_debug(
+        logger,
+        "source_format=%s persistence_start file_name=%s account_id=%s rows_parsed=%s",
+        source_format,
+        import_path.name,
+        account_id,
+        len(parsed_rows),
+    )
 
     with connect_database(paths) as conn:
         account = find_import_account(conn, account_id)
         if account is None:
             raise ImportFailure(f"Account id {account_id} is not configured.")
+        configured_account_number = normalize_account_number(account["account_number"])
+        log_debug(
+            logger,
+            "source_format=%s import_account account_id=%s bank=%s currency=%s "
+            "account_suffix=%s",
+            source_format,
+            account_id,
+            account["bank_name"],
+            account["currency"],
+            account_number_suffix(configured_account_number),
+        )
         if account["bank_name"] != "Bank of America" or account["currency"] != "USD":
             raise ImportFailure(
                 f"Bank of America {import_label} import requires a "
                 "Bank of America USD account."
             )
         if require_pdf_account_match:
-            configured_account_number = normalize_account_number(account["account_number"])
             if pdf_account_number != configured_account_number:
+                log_debug(
+                    logger,
+                    "source_format=%s account_mismatch configured_suffix=%s "
+                    "statement_suffix=%s",
+                    source_format,
+                    account_number_suffix(configured_account_number),
+                    account_number_suffix(pdf_account_number),
+                )
                 raise ImportFailure(
                     "Bank of America PDF account number does not match configured account."
                 )
+            log_debug(
+                logger,
+                "source_format=%s account_match account_suffix=%s",
+                source_format,
+                account_number_suffix(configured_account_number),
+            )
 
         bank_id = int(account["bank_id"])
         category_id = uncategorized_category_id(conn)
@@ -304,6 +356,16 @@ def import_boa_transactions(
         )
         conn.commit()
 
+    log_debug(
+        logger,
+        "source_format=%s rows_parsed=%s rows_imported=%s rows_skipped_duplicate=%s "
+        "account_suffix=%s",
+        source_format,
+        len(parsed_rows),
+        rows_imported,
+        rows_skipped_duplicate,
+        account_number_suffix(configured_account_number),
+    )
     return ImportSummary(
         file_name=import_path.name,
         bank_name="Bank of America",
@@ -505,3 +567,17 @@ def empty_to_none(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def account_number_suffix(value: str | None) -> str:
+    """Return the last four digits of an account number for safe diagnostics."""
+
+    normalized = normalize_account_number(value or "")
+    return normalized[-4:] if normalized else "(missing)"
+
+
+def log_debug(logger: logging.Logger | None, message: str, *args: object) -> None:
+    """Log importer diagnostics when a CLI runtime logger is available."""
+
+    if logger is not None:
+        logger.debug(message, *args)

@@ -12,6 +12,42 @@ def test_cli_version() -> None:
     assert "bank-buddy, version 0.1.0" in result.output
 
 
+def test_cli_help_includes_base_runtime_options() -> None:
+    result = CliRunner().invoke(main, ["--help"])
+
+    assert result.exit_code == 0
+    for option in (
+        "-v, --debug",
+        "--environment",
+        "--config",
+        "--keep-temp",
+        "--log-file",
+    ):
+        assert option in result.output
+
+
+def test_config_can_enable_debug_logging(tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "environment: qa\nlog_level: debug\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["--config", str(config_path), "status"],
+        env={
+            "BANKBUDDY_HOME": str(tmp_path / "home"),
+            "BASE_CACHE_DIR": str(tmp_path / "cache"),
+        },
+    )
+
+    assert result.exit_code == 0
+    assert "Home:" in result.stdout
+    assert "DEBUG" in result.stderr
+    assert "environment=qa" in result.stderr
+
+
 def test_status_reports_uninitialized_database(tmp_path) -> None:
     result = CliRunner().invoke(
         main,

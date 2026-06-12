@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.2
+**Version:** 1.3
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.3: Added the CLI runtime contract: Bank Buddy keeps Click as the command
+  parser while following Base-style runtime conventions for debug logging,
+  config loading, environment selection, temp preservation, log-file overrides,
+  stdout/stderr separation, and safe diagnostics.
 - v1.2: Confirmed Python plus `uv`/`pyproject.toml` as the core project
   contract; made multi-currency data support part of the first implementation;
   narrowed Phase 1 parsing to a reliable Bank of America CSV vertical slice;
@@ -63,6 +67,10 @@ focused on the financial domain rather than infrastructure.
   lint/test configuration, and Python version constraints.
 - Use `uv sync` to create the local environment and `uv run ...` for commands.
 - Expose the CLI as a console script named `bank-buddy`.
+- Follow Base-style CLI runtime behavior: root options for `--debug`,
+  `--log-file`, `--keep-temp`, `--environment`, and `--config`; primary output
+  on stdout; diagnostics on stderr; and no full account numbers or raw
+  statement contents in logs.
 - Treat currency as a first-class domain value from the first implementation:
   schema, parsing, formatting, reports, and budgets must carry ISO currency
   codes even when only one parser is implemented.
@@ -83,7 +91,7 @@ focused on the financial domain rather than infrastructure.
 |---|---|
 | Core language | Python 3.12+ |
 | Project management | `uv` + `pyproject.toml` |
-| CLI framework | `click` |
+| CLI framework | `click` with Base-style runtime conventions |
 | Database | SQLite |
 | Migrations | Small SQL migration runner or lightweight Python migration layer |
 | Phase 1 BOA PDF parsing | `pdfplumber` for text-selectable PDFs |

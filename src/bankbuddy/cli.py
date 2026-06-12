@@ -16,20 +16,75 @@ from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
 from bankbuddy.paths import resolve_app_paths
+from bankbuddy.runtime import CliRuntime
+from bankbuddy.runtime import RuntimeConfigError
+from bankbuddy.runtime import create_runtime
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(
+    name="bank-buddy",
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 @click.version_option(__version__, prog_name="bank-buddy")
-def main() -> None:
+@click.option(
+    "-v",
+    "--debug",
+    is_flag=True,
+    help="Enable DEBUG logging on the user-facing stream.",
+)
+@click.option("--environment", help="Set the Base CLI environment.")
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(dir_okay=False),
+    help="Load an additional config file.",
+)
+@click.option("--keep-temp", is_flag=True, help="Preserve this run's temp directory.")
+@click.option(
+    "--log-file",
+    type=click.Path(dir_okay=False),
+    help="Override the persistent log file.",
+)
+@click.pass_context
+def main(
+    ctx: click.Context,
+    debug: bool,
+    environment: str | None,
+    config_path: str | None,
+    keep_temp: bool,
+    log_file: str | None,
+) -> None:
     """Local-first personal finance tracking."""
+
+    try:
+        runtime = create_runtime(
+            debug=debug,
+            environment=environment,
+            config_path=config_path,
+            keep_temp=keep_temp,
+            log_file=log_file,
+        )
+    except (OSError, RuntimeConfigError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    ctx.obj = runtime
+    ctx.call_on_close(runtime.cleanup)
 
 
 @main.command()
-def status() -> None:
+@click.pass_context
+def status(ctx: click.Context) -> None:
     """Show the local BankBuddy app state."""
 
+    runtime = runtime_from_context(ctx)
     paths = resolve_app_paths()
     initialized = "yes" if paths.database.exists() else "no"
+    runtime.log.debug(
+        "status home=%s database=%s initialized=%s",
+        paths.root,
+        paths.database,
+        initialized,
+    )
 
     click.echo(f"Home: {paths.root}")
     click.echo(f"Database: {paths.database}")
@@ -37,11 +92,14 @@ def status() -> None:
 
 
 @main.command("init")
-def init_command() -> None:
+@click.pass_context
+def init_command(ctx: click.Context) -> None:
     """Initialize the local BankBuddy app directory and database."""
 
+    runtime = runtime_from_context(ctx)
     paths = resolve_app_paths()
     initialize_database(paths)
+    runtime.log.debug("init home=%s database=%s", paths.root, paths.database)
     click.echo(f"Initialized Bank Buddy at {paths.root}")
 
 
@@ -76,7 +134,9 @@ def account() -> None:
     help="Optional parser-visible account reference, such as last four digits.",
 )
 @click.option("--display-name", help="Optional friendly account label.")
+@click.pass_context
 def account_add(
+    ctx: click.Context,
     bank_name: str,
     country: str,
     account_number: str,
@@ -87,6 +147,7 @@ def account_add(
 ) -> None:
     """Add a bank account."""
 
+    runtime = runtime_from_context(ctx)
     paths = resolve_app_paths()
     try:
         account = add_account(
@@ -102,15 +163,28 @@ def account_add(
     except AccountAlreadyExistsError as exc:
         raise click.ClickException(str(exc)) from exc
 
+    runtime.log.debug(
+        "account_added account_id=%s bank=%s country=%s type=%s currency=%s "
+        "account_suffix=%s",
+        account.account_id,
+        account.bank_name,
+        account.country,
+        account.account_type,
+        account.currency,
+        account.account_number[-4:],
+    )
     click.echo(f"Added account {account.account_id} for {account.bank_name}")
 
 
 @account.command("list")
-def account_list() -> None:
+@click.pass_context
+def account_list(ctx: click.Context) -> None:
     """List configured bank accounts."""
 
+    runtime = runtime_from_context(ctx)
     paths = resolve_app_paths()
     accounts = list_accounts(paths)
+    runtime.log.debug("account_list count=%s", len(accounts))
     if not accounts:
         click.echo("No accounts configured.")
         return
@@ -134,24 +208,60 @@ def account_list() -> None:
     help="CSV file to import.",
 )
 @click.option("--account-id", required=True, type=int, help="Configured account id.")
-def import_command(file_path: Path, account_id: int) -> None:
+@click.pass_context
+def import_command(ctx: click.Context, file_path: Path, account_id: int) -> None:
     """Import an explicit statement file."""
 
+    runtime = runtime_from_context(ctx)
     paths = resolve_app_paths()
+    runtime.log.debug(
+        "import_requested file_name=%s suffix=%s account_id=%s",
+        file_path.name,
+        file_path.suffix.lower() or "(none)",
+        account_id,
+    )
     try:
         if file_path.suffix.lower() == ".csv":
-            summary = import_boa_csv(paths, file_path, account_id=account_id)
+            summary = import_boa_csv(
+                paths,
+                file_path,
+                account_id=account_id,
+                logger=runtime.log,
+            )
         elif file_path.suffix.lower() == ".pdf":
-            summary = import_boa_pdf(paths, file_path, account_id=account_id)
+            summary = import_boa_pdf(
+                paths,
+                file_path,
+                account_id=account_id,
+                logger=runtime.log,
+            )
         else:
             raise ImportFailure(
                 f"Unsupported import file type: {file_path.suffix or '(none)'}"
             )
     except ImportFailure as exc:
+        runtime.log.debug("import_failed reason=%s", exc)
         raise click.ClickException(str(exc)) from exc
 
+    runtime.log.debug(
+        "import_finished file_name=%s rows_parsed=%s rows_imported=%s "
+        "rows_skipped_duplicate=%s",
+        summary.file_name,
+        summary.rows_parsed,
+        summary.rows_imported,
+        summary.rows_skipped_duplicate,
+    )
     click.echo(f"File: {summary.file_name}")
     click.echo(f"Bank: {summary.bank_name} | Account ID: {summary.account_id}")
     click.echo(f"Rows parsed: {summary.rows_parsed}")
     click.echo(f"Rows imported: {summary.rows_imported}")
     click.echo(f"Duplicate rows skipped: {summary.rows_skipped_duplicate}")
+
+
+def runtime_from_context(ctx: click.Context) -> CliRuntime:
+    """Return the root BankBuddy runtime context."""
+
+    runtime = ctx.find_root().obj
+    if not isinstance(runtime, CliRuntime):
+        raise click.ClickException("BankBuddy runtime context is not active.")
+    return runtime

@@ -128,6 +128,61 @@ def test_import_file_command_routes_pdf_imports(tmp_path, monkeypatch) -> None:
     assert "Rows imported: 2" in import_result.output
 
 
+def test_pdf_import_debug_log_omits_full_account_number(tmp_path, monkeypatch) -> None:
+    pdf_path = tmp_path / "boa.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 synthetic fixture placeholder")
+    log_path = tmp_path / "bank-buddy.log"
+    runner = CliRunner()
+    env = {
+        "BANKBUDDY_HOME": str(tmp_path / "home"),
+        "BASE_CACHE_DIR": str(tmp_path / "cache"),
+    }
+    monkeypatch.setattr("bankbuddy.imports.extract_pdf_text", lambda _path: BOA_PDF_TEXT)
+
+    add_result = runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "12345678901145",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+    import_result = runner.invoke(
+        main,
+        [
+            "--debug",
+            "--log-file",
+            str(log_path),
+            "import",
+            "--file",
+            str(pdf_path),
+            "--account-id",
+            "1",
+        ],
+        env=env,
+    )
+
+    assert add_result.exit_code == 0
+    assert import_result.exit_code == 0
+    assert "Rows imported: 2" in import_result.stdout
+    assert "source_format=boa_pdf" in import_result.stderr
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "rows_parsed=2 rows_imported=2 rows_skipped_duplicate=0" in log_text
+    assert "account_suffix=1145" in log_text
+    assert "12345678901145" not in log_text
+    assert "12345678901145" not in import_result.stderr
+
+
 def test_import_file_command_rejects_unsupported_file_type(tmp_path) -> None:
     statement_path = tmp_path / "statement.txt"
     statement_path.write_text("not supported", encoding="utf-8")
