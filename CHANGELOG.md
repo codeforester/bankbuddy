@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added an `import history` command for inspecting prior import attempts with
+  status and limit filters.
 - Added a `tx list` command for inspecting imported transactions with account
   and date filters.
 - Added Base-style CLI runtime options for debug logging, config loading,
