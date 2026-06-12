@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added a `report spending` command for summarizing outgoing transactions by
+  category and currency for a year or month.
 - Added canonical imported-statement filenames and managed processed-file
   archive copies for successful explicit imports, with original source files
   left untouched.

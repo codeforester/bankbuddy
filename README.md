@@ -34,6 +34,8 @@ uv run bank-buddy import history
 uv run bank-buddy import history --status success --limit 10
 uv run bank-buddy tx list
 uv run bank-buddy tx list --account-id 1 --from 2026-04-01 --to 2026-05-31
+uv run bank-buddy report spending --year 2026
+uv run bank-buddy report spending --year 2026 --month 5
 ```
 
 Use Base-style runtime options before the subcommand when troubleshooting:

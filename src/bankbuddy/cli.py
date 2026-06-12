@@ -18,6 +18,7 @@ from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
 from bankbuddy.paths import resolve_app_paths
+from bankbuddy.reports import spending_report
 from bankbuddy.runtime import CliRuntime
 from bankbuddy.runtime import RuntimeConfigError
 from bankbuddy.runtime import create_runtime
@@ -262,6 +263,53 @@ def validate_iso_date(value: str | None, option_name: str) -> str | None:
         raise click.ClickException(
             f"Invalid date for {option_name}: {value}. Expected YYYY-MM-DD."
         ) from exc
+
+
+@main.group()
+def report() -> None:
+    """Show financial reports."""
+
+
+@report.command("spending")
+@click.option(
+    "--year",
+    required=True,
+    type=click.IntRange(min=1900, max=9999),
+    help="Report year.",
+)
+@click.option(
+    "--month",
+    type=click.IntRange(min=1, max=12),
+    help="Optional report month.",
+)
+@click.pass_context
+def report_spending(
+    ctx: click.Context,
+    year: int,
+    month: int | None,
+) -> None:
+    """Summarize outgoing spending by category."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths()
+    rows = spending_report(paths, year=year, month=month)
+    runtime.log.debug(
+        "report_spending count=%s year=%s month=%s",
+        len(rows),
+        year,
+        month,
+    )
+    period_label = f"{year:04d}-{month:02d}" if month is not None else f"{year:04d}"
+    if not rows:
+        click.echo(f"No spending found for {period_label}.")
+        return
+
+    click.echo("Category  Currency  Transactions  Spending")
+    for row in rows:
+        click.echo(
+            f"{row.category_name}  {row.currency}  {row.transaction_count}  "
+            f"{format_minor_units(row.spending_minor_units)}"
+        )
 
 
 @main.group("import", invoke_without_command=True, no_args_is_help=False)
