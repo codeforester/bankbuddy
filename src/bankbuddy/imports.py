@@ -355,7 +355,7 @@ def parse_boa_date(value: str) -> str:
     """Parse a Bank of America CSV date into ISO format."""
 
     stripped = value.strip()
-    for date_format in ("%m/%d/%Y", "%Y-%m-%d"):
+    for date_format in ("%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d"):
         try:
             return datetime.strptime(stripped, date_format).date().isoformat()
         except ValueError:
