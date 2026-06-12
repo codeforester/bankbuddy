@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added Base-style CLI runtime options for debug logging, config loading,
+  environment selection, temp preservation, and log-file overrides.
 - Added Bank of America text-PDF imports with full-account-number validation
   before transaction writes.
 - Added explicit Bank of America CSV imports with transaction hashing,
