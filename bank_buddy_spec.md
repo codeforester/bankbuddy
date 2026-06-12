@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.3
+**Version:** 1.4
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.4: Added the first transaction inspection command, `tx list`, with
+  account-id and inclusive date-range filters so imported rows can be reviewed
+  without opening SQLite directly.
 - v1.3: Added the CLI runtime contract: Bank Buddy keeps Click as the command
   parser while following Base-style runtime conventions for debug logging,
   config loading, environment selection, temp preservation, log-file overrides,
@@ -463,11 +466,17 @@ bank-buddy import --retry ATTEMPT_ID    # Retry a failed import
 
 ```text
 bank-buddy tx list
-bank-buddy tx list --bank BANK
+bank-buddy tx list --account-id ACCOUNT_ID
 bank-buddy tx list --from DATE --to DATE
+bank-buddy tx categorize TX_ID CATEGORY
+```
+
+Later transaction commands and filters:
+
+```text
+bank-buddy tx list --bank BANK
 bank-buddy tx list --category CATEGORY
 bank-buddy tx list --uncategorized
-bank-buddy tx categorize TX_ID CATEGORY
 ```
 
 ### Reporting Commands
