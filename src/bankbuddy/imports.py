@@ -204,13 +204,14 @@ def import_boa_pdf(
     pdf_path: Path,
     *,
     account_id: int,
+    extracted_text: str | None = None,
     logger: logging.Logger | None = None,
 ) -> ImportSummary:
     """Import a Bank of America text-selectable PDF for a configured account."""
 
     initialize_database(paths)
     log_debug(logger, "source_format=boa_pdf parse_start file_name=%s", pdf_path.name)
-    text = extract_pdf_text(pdf_path)
+    text = extracted_text if extracted_text is not None else extract_pdf_text(pdf_path)
     log_debug(logger, "source_format=boa_pdf text_extracted characters=%s", len(text))
     parsed_rows = parse_boa_pdf_text(text)
     pdf_account_number = extract_boa_pdf_account_number(text)

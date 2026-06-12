@@ -30,6 +30,7 @@ uv run bank-buddy account add \
   --currency USD
 uv run bank-buddy account list
 uv run bank-buddy import --file path/to/boa.pdf --account-id 1
+uv run bank-buddy import inbox
 uv run bank-buddy import inbox --account-id 1
 uv run bank-buddy import history
 uv run bank-buddy import history --status success --limit 10
@@ -54,7 +55,9 @@ Primary command output goes to stdout. Runtime diagnostics go to stderr, and
 debug logs avoid full account numbers and raw statement contents.
 
 Bank of America imports support text-selectable PDF statements first, plus CSV
-files when available. Successful imports are copied into
+files when available. BOA PDF files in `~/BankBuddy/inbox/` can be routed to a
+configured account by statement account number; CSV inbox imports still require
+`--account-id`. Successful imports are copied into
 `~/BankBuddy/processed/<bank>/<year>/<month>/` with canonical filenames while
 the original source files are left untouched. Keep real statements outside the
 repo; Bank Buddy stores data in your local SQLite database.

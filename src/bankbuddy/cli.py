@@ -426,9 +426,13 @@ def import_history_command(
 
 
 @import_command.command("inbox")
-@click.option("--account-id", required=True, type=int, help="Configured account id.")
+@click.option(
+    "--account-id",
+    type=int,
+    help="Configured account id. Required for CSV files; optional for routable PDFs.",
+)
 @click.pass_context
-def import_inbox_command(ctx: click.Context, account_id: int) -> None:
+def import_inbox_command(ctx: click.Context, account_id: int | None) -> None:
     """Import supported files from the managed inbox."""
 
     runtime = runtime_from_context(ctx)
