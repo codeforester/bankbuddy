@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.8
+**Version:** 1.9
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.9: Added the first managed inbox processing command,
+  `import inbox --account-id`, for importing supported files from
+  `~/BankBuddy/inbox` and removing successful inbox-owned source files after
+  archival.
 - v1.8: Added the SQLite export command with overwrite protection and a
   sensitive-data warning for database backups that include actual account
   numbers.
@@ -395,13 +399,15 @@ types updates the existing budget record.
 `-- exports/
 ```
 
-Phase 1 imports an explicit `--file` path. Phase 2 adds `inbox/` scanning and
-movement for files Bank Buddy owns inside `inbox/`. Automatic watching comes
+Phase 1 imports an explicit `--file` path. Phase 2 adds `inbox/` scanning for
+an explicitly selected account and removes successfully imported inbox-owned
+source files after archival. Automatic watching and account auto-routing come
 later.
 
 ### 6.2 Import Process
 
-1. Import the explicit `--file` path. Later phases may scan `inbox/`.
+1. Import the explicit `--file` path, or scan visible files in `inbox/` with
+   `import inbox --account-id ACCOUNT_ID`.
 2. Compute SHA-256 hash of the file.
 3. Detect file type.
 4. Infer bank, account reference, and statement period from parser-specific
@@ -411,7 +417,8 @@ later.
    matches the selected configured account.
 7. Copy the successfully recognized source file to the managed archive using
    the canonical filename and `processed/<bank-slug>/<year>/<month>/`
-   hierarchy. Explicit source files are left untouched.
+   hierarchy. Explicit source files are left untouched; successful inbox-owned
+   source files are removed after the archive copy exists.
 8. Create or update the `import_files` row with original filename, canonical
    filename, source path, processed path, account reference, source format, and
    statement period.
@@ -481,7 +488,7 @@ bank-buddy status                       # Show DB path, tx count, date range
 ### Import Commands
 
 ```text
-bank-buddy import                       # Process inbox/ in Phase 2+
+bank-buddy import inbox --account-id ID # Process supported files in inbox/
 bank-buddy import --file FILE           # Import a specific file
 bank-buddy import history               # Show import history and results
 bank-buddy import history --status STATUS --limit N
@@ -689,7 +696,7 @@ Cloud sync and automated backup are out of scope for early phases.
 
 ### Phase 2 — Broader Import Correctness
 
-- inbox scanning and inbox-owned processed-file movement
+- inbox scanning for an explicit account
 - account setup/list commands
 - retry failed imports
 - HDFC and ICICI PDF parser spikes using real samples

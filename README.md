@@ -30,6 +30,7 @@ uv run bank-buddy account add \
   --currency USD
 uv run bank-buddy account list
 uv run bank-buddy import --file path/to/boa.pdf --account-id 1
+uv run bank-buddy import inbox --account-id 1
 uv run bank-buddy import history
 uv run bank-buddy import history --status success --limit 10
 uv run bank-buddy tx list
