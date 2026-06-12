@@ -40,6 +40,11 @@ and versions are tracked in the repo-root `VERSION` file.
   accounts, categories, transactions, import files, import attempts,
   category rules, budgets, and built-in seed categories.
 - Added the Phase 0 Python project skeleton with `uv`, `pyproject.toml`, a
-  Click-based `bank-buddy` CLI, app directory discovery, SQLite migration
+  Click-based `bankbuddy` CLI, app directory discovery, SQLite migration
   bootstrap, USD/INR currency helpers, pytest coverage, and CI validation.
 - Initialized the repository with the Base-managed repo baseline.
+
+### Changed
+
+- Renamed the installed CLI command from `bank-buddy` to `bankbuddy` and removed
+  the dashed command name.
