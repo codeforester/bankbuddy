@@ -136,6 +136,24 @@ def test_parse_boa_pdf_text_normalizes_transactions() -> None:
     assert rows[1].amount_minor_units == 250000
 
 
+def test_parse_boa_pdf_text_accepts_two_digit_years() -> None:
+    rows = parse_boa_pdf_text(
+        """
+        Bank of America
+        Account number 1234 5678 901145
+        Statement Period: April 23, 2026 through May 19, 2026
+        Transaction activity
+        Date Description Amount Balance
+        04/23/26 GROCERY STORE -42.17 1,200.00
+        """
+    )
+
+    assert len(rows) == 1
+    assert rows[0].transaction_date == "2026-04-23"
+    assert rows[0].description == "GROCERY STORE"
+    assert rows[0].amount_minor_units == -4217
+
+
 def test_import_boa_csv_inserts_transactions_and_attempt(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path / "home")
     account = add_account(
