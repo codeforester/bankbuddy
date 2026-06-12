@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.9
+**Version:** 1.10
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.10: Added Bank of America PDF account auto-routing for `import inbox`
+  when the statement account number matches exactly one configured account.
+  CSV inbox imports still require `--account-id` because current BOA CSV files
+  do not provide reliable account metadata.
 - v1.9: Added the first managed inbox processing command,
   `import inbox --account-id`, for importing supported files from
   `~/BankBuddy/inbox` and removing successful inbox-owned source files after
@@ -399,15 +403,18 @@ types updates the existing budget record.
 `-- exports/
 ```
 
-Phase 1 imports an explicit `--file` path. Phase 2 adds `inbox/` scanning for
-an explicitly selected account and removes successfully imported inbox-owned
-source files after archival. Automatic watching and account auto-routing come
-later.
+Phase 1 imports an explicit `--file` path. Phase 2 adds `inbox/` scanning and
+removes successfully imported inbox-owned source files after archival. Bank of
+America PDFs can be auto-routed by full statement account number when it
+matches exactly one configured BOA USD account. CSV inbox imports still require
+an explicit account id until a supported CSV format provides reliable account
+metadata. Automatic watching comes later.
 
 ### 6.2 Import Process
 
 1. Import the explicit `--file` path, or scan visible files in `inbox/` with
-   `import inbox --account-id ACCOUNT_ID`.
+   `import inbox`. Use `import inbox --account-id ACCOUNT_ID` when a supported
+   format cannot infer the account safely, such as current BOA CSV files.
 2. Compute SHA-256 hash of the file.
 3. Detect file type.
 4. Infer bank, account reference, and statement period from parser-specific
@@ -488,7 +495,8 @@ bank-buddy status                       # Show DB path, tx count, date range
 ### Import Commands
 
 ```text
-bank-buddy import inbox --account-id ID # Process supported files in inbox/
+bank-buddy import inbox                 # Process routable files in inbox/
+bank-buddy import inbox --account-id ID # Process files for an explicit account
 bank-buddy import --file FILE           # Import a specific file
 bank-buddy import history               # Show import history and results
 bank-buddy import history --status STATUS --limit N
@@ -696,7 +704,7 @@ Cloud sync and automated backup are out of scope for early phases.
 
 ### Phase 2 — Broader Import Correctness
 
-- inbox scanning for an explicit account
+- inbox scanning with BOA PDF account auto-routing
 - account setup/list commands
 - retry failed imports
 - HDFC and ICICI PDF parser spikes using real samples

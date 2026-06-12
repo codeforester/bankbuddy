@@ -126,6 +126,63 @@ def test_import_inbox_command_reports_success_and_removes_source(tmp_path) -> No
     assert not inbox_file.exists()
 
 
+def test_import_inbox_command_routes_pdf_without_account_id(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    inbox_file = inbox / "statement.pdf"
+    inbox_file.write_bytes(b"%PDF-1.4 synthetic fixture placeholder")
+    env = {"BANKBUDDY_HOME": str(home)}
+    monkeypatch.setattr("bankbuddy.imports.extract_pdf_text", lambda _path: BOA_PDF_TEXT)
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "12345678901145",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(main, ["import", "inbox"], env=env)
+
+    assert result.exit_code == 0
+    assert "Inbox files: 1" in result.output
+    assert "Successful: 1" in result.output
+    assert "success  statement.pdf  parsed=2 imported=2 duplicates=0" in result.output
+    assert not inbox_file.exists()
+
+
+def test_import_inbox_command_reports_csv_requires_account_id(tmp_path) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    inbox_file = inbox / "statement.csv"
+    inbox_file.write_text(BOA_CSV, encoding="utf-8")
+    env = {"BANKBUDDY_HOME": str(home)}
+
+    result = runner.invoke(main, ["import", "inbox"], env=env)
+
+    assert result.exit_code == 0
+    assert "Failed: 1" in result.output
+    assert "failed  statement.csv  CSV inbox import requires --account-id" in result.output
+    assert inbox_file.is_file()
+
+
 def test_import_inbox_command_reports_empty_state(tmp_path) -> None:
     result = CliRunner().invoke(
         main,
