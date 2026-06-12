@@ -51,6 +51,7 @@ def test_list_import_history_orders_newest_first(tmp_path) -> None:
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert rows[0].bank_name == "Bank of America"
+    assert rows[0].account_id == account.account_id
     assert rows[0].status == "success"
     assert rows[0].finished_at is not None
     assert rows[0].rows_parsed == 2
@@ -95,4 +96,5 @@ def test_list_import_history_filters_by_status_and_limit(tmp_path) -> None:
 
     assert len(rows) == 1
     assert rows[0].status == "failed"
+    assert rows[0].account_id is None
     assert rows[0].error_message == "Synthetic failure"

@@ -33,7 +33,10 @@ uv run bank-buddy import --file path/to/boa.pdf --account-id 1
 uv run bank-buddy import inbox
 uv run bank-buddy import inbox --account-id 1
 uv run bank-buddy import history
+uv run bank-buddy import history --status failed
 uv run bank-buddy import history --status success --limit 10
+uv run bank-buddy import retry 1
+uv run bank-buddy import retry 1 --account-id 1
 uv run bank-buddy tx list
 uv run bank-buddy tx list --account-id 1 --from 2026-04-01 --to 2026-05-31
 uv run bank-buddy report spending --year 2026
@@ -61,6 +64,9 @@ configured account by statement account number; CSV inbox imports still require
 `~/BankBuddy/processed/<bank>/<year>/<month>/` with canonical filenames while
 the original source files are left untouched. Keep real statements outside the
 repo; Bank Buddy stores data in your local SQLite database.
+
+Supported import failures are recorded in `import history`. Retrying a failed
+attempt creates a new attempt and leaves the original failed attempt intact.
 
 SQLite exports contain sensitive financial data and actual account numbers.
 Store them in a private location.

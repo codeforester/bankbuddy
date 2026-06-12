@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added durable failed import attempts and an `import retry` command for
+  retrying failed imports from recorded source metadata.
 - Added account auto-routing for Bank of America PDF files processed by
   `import inbox`, while keeping CSV inbox imports explicit with `--account-id`.
 - Added an `import inbox` command for processing supported statement files from

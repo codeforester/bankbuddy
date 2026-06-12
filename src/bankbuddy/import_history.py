@@ -17,6 +17,7 @@ class ImportHistoryRow:
     canonical_file_name: str
     processed_path: str | None
     bank_name: str
+    account_id: int | None
     status: str
     started_at: str
     finished_at: str | None
@@ -52,6 +53,7 @@ def list_import_history(
                 coalesce(import_files.canonical_file_name, '-') as canonical_file_name,
                 import_files.processed_path,
                 coalesce(banks.bank_name, '-') as bank_name,
+                import_attempts.account_id,
                 import_attempts.import_status,
                 import_attempts.started_at,
                 import_attempts.finished_at,
@@ -76,6 +78,7 @@ def list_import_history(
             canonical_file_name=row["canonical_file_name"],
             processed_path=row["processed_path"],
             bank_name=row["bank_name"],
+            account_id=int(row["account_id"]) if row["account_id"] is not None else None,
             status=row["import_status"],
             started_at=row["started_at"],
             finished_at=row["finished_at"],

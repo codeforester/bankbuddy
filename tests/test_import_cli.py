@@ -259,17 +259,17 @@ def test_import_history_command_outputs_attempts(tmp_path) -> None:
 
     assert result.exit_code == 0
     assert (
-        "ID  File  Canonical  Bank  Status  Started  Finished  Parsed  "
-        "Imported  Duplicates  Error"
+        "ID  File  Canonical  Bank  Account  Status  Started  Finished  "
+        "Parsed  Imported  Duplicates  Error"
     ) in result.output
     assert (
         "2  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "Bank of America  success"
+        "Bank of America  1  success"
     ) in result.output
     assert "  2  0  2  -" in result.output
     assert (
         "1  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "Bank of America  success"
+        "Bank of America  1  success"
     ) in result.output
     assert "  2  2  0  -" in result.output
 
@@ -309,11 +309,11 @@ def test_import_history_command_filters_by_status_and_limit(tmp_path) -> None:
     assert result.exit_code == 0
     assert (
         "2  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "Bank of America  success"
+        "Bank of America  1  success"
     ) in result.output
     assert (
         "1  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "Bank of America  success"
+        "Bank of America  1  success"
     ) not in result.output
 
 
@@ -326,6 +326,115 @@ def test_import_history_command_reports_empty_state(tmp_path) -> None:
 
     assert result.exit_code == 0
     assert "No import attempts found." in result.output
+
+
+def test_import_retry_command_retries_failed_csv_attempt(tmp_path) -> None:
+    csv_path = tmp_path / "boa.csv"
+    csv_path.write_text("Date,Description\n06/10/2026,COFFEE SHOP\n", encoding="utf-8")
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path / "home")}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+    failed_import = runner.invoke(
+        main,
+        ["import", "--file", str(csv_path), "--account-id", "1"],
+        env=env,
+    )
+    csv_path.write_text(BOA_CSV, encoding="utf-8")
+
+    retry_result = runner.invoke(main, ["import", "retry", "1"], env=env)
+    history_result = runner.invoke(main, ["import", "history"], env=env)
+
+    assert failed_import.exit_code != 0
+    assert "missing required header" in failed_import.output
+    assert retry_result.exit_code == 0
+    assert "Retried attempt: 1" in retry_result.output
+    assert "File: boa.csv" in retry_result.output
+    assert "Rows imported: 2" in retry_result.output
+    assert history_result.exit_code == 0
+    assert "2  boa.csv" in history_result.output
+    assert "success" in history_result.output
+    assert "1  boa.csv" in history_result.output
+    assert "failed" in history_result.output
+
+
+def test_import_retry_command_rejects_success_attempt(tmp_path) -> None:
+    csv_path = tmp_path / "boa.csv"
+    csv_path.write_text(BOA_CSV, encoding="utf-8")
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path / "home")}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+    runner.invoke(main, ["import", "--file", str(csv_path), "--account-id", "1"], env=env)
+
+    result = runner.invoke(main, ["import", "retry", "1"], env=env)
+
+    assert result.exit_code != 0
+    assert "Only failed import attempts can be retried" in result.output
+
+
+def test_import_retry_command_reports_missing_source_file(tmp_path) -> None:
+    csv_path = tmp_path / "boa.csv"
+    csv_path.write_text("Date,Description\n06/10/2026,COFFEE SHOP\n", encoding="utf-8")
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path / "home")}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+    runner.invoke(main, ["import", "--file", str(csv_path), "--account-id", "1"], env=env)
+    csv_path.unlink()
+
+    result = runner.invoke(main, ["import", "retry", "1"], env=env)
+
+    assert result.exit_code != 0
+    assert "Source file for attempt 1 is no longer available" in result.output
 
 
 def test_import_file_command_routes_pdf_imports(tmp_path, monkeypatch) -> None:
