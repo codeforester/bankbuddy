@@ -86,9 +86,10 @@ focused on the financial domain rather than infrastructure.
 | CLI framework | `click` |
 | Database | SQLite |
 | Migrations | Small SQL migration runner or lightweight Python migration layer |
-| Phase 1 CSV parsing | Python `csv` module |
+| Phase 1 BOA PDF parsing | `pdfplumber` for text-selectable PDFs |
+| Phase 1 CSV fallback parsing | Python `csv` module |
 | Later spreadsheet parsing | `openpyxl` or `pandas` only when needed |
-| Later PDF parsing | `pdfplumber` or `PyMuPDF` after sample PDFs are validated |
+| Later PDF parsing | OCR or bank-specific PDF hardening after sample PDFs are validated |
 | Categorization | Rule-based first, `scikit-learn` later |
 | File watching | `watchdog` in a later automation phase |
 | Web interface | Later, likely Node.js or Python depending on product needs |
@@ -100,11 +101,13 @@ focused on the financial domain rather than infrastructure.
 
 ### Phase 1 Parser
 
-- Bank of America (USA) — CSV export only
+- Bank of America (USA) — text-selectable PDF statement
+- Bank of America (USA) — CSV export fallback when available
 
-Phase 1 intentionally supports one bank and one file format for parsing. The
-first milestone should prove end-to-end correctness before broadening parser
-support.
+Phase 1 intentionally supports one bank first. The primary import path is a
+text-selectable Bank of America PDF statement because CSV export may not be
+available for every account flow. CSV remains supported when available, but OCR,
+password-protected PDFs, and broad PDF layout support are later work.
 
 ### Later Banks
 
@@ -118,8 +121,8 @@ support.
 
 Multi-currency support means the schema, import normalization, reports, and
 budgets always carry a currency code. It does not mean every bank parser exists
-in Phase 1. Bank of America imports produce USD transactions first; HDFC and
-ICICI add INR statement parsing in a later phase.
+in Phase 1. Bank of America PDF and CSV imports produce USD transactions first;
+HDFC and ICICI add INR statement parsing in a later phase.
 
 No cross-currency consolidation happens in early phases. Budgets and reports are
 per-currency unless a later design explicitly adds conversion.
@@ -373,19 +376,21 @@ processed-file movement. Automatic watching comes later.
 6. Detect file type.
 7. Infer bank and account metadata from parser-specific signals.
 8. Parse into staged transactions.
-9. Validate staged data:
+9. For PDF imports, validate that the full account number in the statement
+   matches the selected configured account.
+10. Validate staged data:
    - required fields are present
    - dates are sensible
    - amounts parse into integer minor units
    - currency is known
    - duplicate-looking rows in the same batch are reported
-10. Compute transaction hashes.
-11. Skip existing transaction hashes and count them in the summary.
-12. Apply deterministic category rules.
-13. Commit new valid transactions in one database transaction.
-14. For the later inbox workflow, move successfully imported files to
+11. Compute transaction hashes.
+12. Skip existing transaction hashes and count them in the summary.
+13. Apply deterministic category rules.
+14. Commit new valid transactions in one database transaction.
+15. For the later inbox workflow, move successfully imported files to
     `processed/<Bank Name>/`.
-15. Finish the import attempt with row counts and any warnings.
+16. Finish the import attempt with row counts and any warnings.
 
 On failure before commit, no transaction rows are written and the file remains
 in place. The failed attempt is recorded and can be retried.
@@ -393,8 +398,8 @@ in place. The failed attempt is recorded and can be retried.
 ### 6.3 Import Summary Example
 
 ```text
-File: boa_2025_11.csv
-Bank: Bank of America | Account type: checking
+File: boa_2025_11.pdf
+Bank: Bank of America | Account ID: 1
 Rows parsed:              87
 Rows imported:            54
 Duplicate rows skipped:   33
@@ -407,7 +412,8 @@ Bank parsers own their inference rules because signals are bank-specific:
 
 - known CSV headers
 - known statement title/header patterns
-- account number or last-four patterns
+- account number or last-four patterns; the BOA PDF parser strips spaces from
+  the statement account number before matching it to `accounts.account_number`
 - currency and date formats
 
 If confidence is low, the command fails with a clear message. Later phases may

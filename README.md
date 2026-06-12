@@ -29,8 +29,12 @@ uv run bank-buddy account add \
   --type checking \
   --currency USD
 uv run bank-buddy account list
-uv run bank-buddy import --file path/to/boa.csv --account-id 1
+uv run bank-buddy import --file path/to/boa.pdf --account-id 1
 ```
+
+Bank of America imports support text-selectable PDF statements first, plus CSV
+files when available. Keep real statements outside the repo; Bank Buddy stores
+data in your local SQLite database.
 
 Run tests:
 

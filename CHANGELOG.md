@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added Bank of America text-PDF imports with full-account-number validation
+  before transaction writes.
 - Added explicit Bank of America CSV imports with transaction hashing,
   duplicate skipping, import attempt records, and CLI summaries.
 - Added minimal account setup commands for creating and listing configured bank
