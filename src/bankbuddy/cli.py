@@ -14,6 +14,7 @@ from bankbuddy.accounts import masked_account_number
 from bankbuddy.database import initialize_database
 from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import import_boa_csv
+from bankbuddy.imports import import_boa_pdf
 from bankbuddy.paths import resolve_app_paths
 
 
@@ -138,7 +139,14 @@ def import_command(file_path: Path, account_id: int) -> None:
 
     paths = resolve_app_paths()
     try:
-        summary = import_boa_csv(paths, file_path, account_id=account_id)
+        if file_path.suffix.lower() == ".csv":
+            summary = import_boa_csv(paths, file_path, account_id=account_id)
+        elif file_path.suffix.lower() == ".pdf":
+            summary = import_boa_pdf(paths, file_path, account_id=account_id)
+        else:
+            raise ImportFailure(
+                f"Unsupported import file type: {file_path.suffix or '(none)'}"
+            )
     except ImportFailure as exc:
         raise click.ClickException(str(exc)) from exc
 
