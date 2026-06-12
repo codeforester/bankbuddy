@@ -478,7 +478,7 @@ def test_import_file_command_routes_pdf_imports(tmp_path, monkeypatch) -> None:
 def test_pdf_import_debug_log_omits_full_account_number(tmp_path, monkeypatch) -> None:
     pdf_path = tmp_path / "boa.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 synthetic fixture placeholder")
-    log_path = tmp_path / "bank-buddy.log"
+    log_path = tmp_path / "bankbuddy.log"
     runner = CliRunner()
     env = {
         "BANKBUDDY_HOME": str(tmp_path / "home"),

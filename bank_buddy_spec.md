@@ -92,7 +92,7 @@ focused on the financial domain rather than infrastructure.
 - Use `pyproject.toml` for package metadata, console scripts, dependency groups,
   lint/test configuration, and Python version constraints.
 - Use `uv sync` to create the local environment and `uv run ...` for commands.
-- Expose the CLI as a console script named `bank-buddy`.
+- Expose the CLI as a console script named `bankbuddy`.
 - Follow Base-style CLI runtime behavior: root options for `--debug`,
   `--log-file`, `--keep-temp`, `--environment`, and `--config`; primary output
   on stdout; diagnostics on stderr; and no full account numbers or raw
@@ -178,7 +178,7 @@ cannot identify the bank confidently, import fails loudly rather than guessing.
 [ Import Folder or --file Path ]
         |
         v
-[ CLI: bank-buddy import ]
+[ CLI: bankbuddy import ]
         |
         |-- Detect file type
         |-- Infer bank and account metadata
@@ -484,61 +484,61 @@ be inferred safely.
 ## 7. CLI Command Reference
 
 Commands are implemented with `click` and exposed by `pyproject.toml` as
-`bank-buddy`.
+`bankbuddy`.
 
 During development:
 
 ```bash
 uv sync
-uv run bank-buddy --help
+uv run bankbuddy --help
 uv run pytest
 ```
 
 ### Initialization
 
 ```text
-bank-buddy init                         # Create local app directories and DB
-bank-buddy status                       # Show DB path, tx count, date range
+bankbuddy init                         # Create local app directories and DB
+bankbuddy status                       # Show DB path, tx count, date range
 ```
 
 ### Import Commands
 
 ```text
-bank-buddy import inbox                 # Process routable files in inbox/
-bank-buddy import inbox --account-id ID # Process files for an explicit account
-bank-buddy import --file FILE           # Import a specific file
-bank-buddy import history               # Show import history and results
-bank-buddy import history --status STATUS --limit N
-bank-buddy import retry ATTEMPT_ID      # Retry a failed import
-bank-buddy import retry ATTEMPT_ID --account-id ID
+bankbuddy import inbox                 # Process routable files in inbox/
+bankbuddy import inbox --account-id ID # Process files for an explicit account
+bankbuddy import --file FILE           # Import a specific file
+bankbuddy import history               # Show import history and results
+bankbuddy import history --status STATUS --limit N
+bankbuddy import retry ATTEMPT_ID      # Retry a failed import
+bankbuddy import retry ATTEMPT_ID --account-id ID
 ```
 
 ### Transaction Commands
 
 ```text
-bank-buddy tx list
-bank-buddy tx list --account-id ACCOUNT_ID
-bank-buddy tx list --from DATE --to DATE
-bank-buddy tx categorize TX_ID CATEGORY
+bankbuddy tx list
+bankbuddy tx list --account-id ACCOUNT_ID
+bankbuddy tx list --from DATE --to DATE
+bankbuddy tx categorize TX_ID CATEGORY
 ```
 
 Later transaction commands and filters:
 
 ```text
-bank-buddy tx list --bank BANK
-bank-buddy tx list --category CATEGORY
-bank-buddy tx list --uncategorized
+bankbuddy tx list --bank BANK
+bankbuddy tx list --category CATEGORY
+bankbuddy tx list --uncategorized
 ```
 
 ### Reporting Commands
 
 ```text
-bank-buddy report spending --year YEAR
-bank-buddy report spending --year YEAR --month MONTH
-bank-buddy report income --year YEAR
-bank-buddy report trend --category CATEGORY
-bank-buddy report budget --year YEAR
-bank-buddy report budget --year YEAR --month MONTH
+bankbuddy report spending --year YEAR
+bankbuddy report spending --year YEAR --month MONTH
+bankbuddy report income --year YEAR
+bankbuddy report trend --category CATEGORY
+bankbuddy report budget --year YEAR
+bankbuddy report budget --year YEAR --month MONTH
 ```
 
 The first spending report counts outgoing transactions with
@@ -549,31 +549,31 @@ until category management exists.
 ### Category Commands
 
 ```text
-bank-buddy category list
-bank-buddy category add NAME --kind income|expense
-bank-buddy category delete NAME
-bank-buddy category rules list
-bank-buddy category rules add PATTERN CATEGORY
-bank-buddy category rules delete RULE_ID
+bankbuddy category list
+bankbuddy category add NAME --kind income|expense
+bankbuddy category delete NAME
+bankbuddy category rules list
+bankbuddy category rules add PATTERN CATEGORY
+bankbuddy category rules delete RULE_ID
 ```
 
 ### Budget Commands
 
 ```text
-bank-buddy budget list
-bank-buddy budget set CATEGORY CURRENCY TYPE MIN MAX
-bank-buddy budget delete CATEGORY CURRENCY
+bankbuddy budget list
+bankbuddy budget set CATEGORY CURRENCY TYPE MIN MAX
+bankbuddy budget delete CATEGORY CURRENCY
 ```
 
 ### Setup & Admin Commands
 
 ```text
-bank-buddy setup bank add
-bank-buddy setup bank list
-bank-buddy setup account add
-bank-buddy setup account list
-bank-buddy export sqlite --output FILE
-bank-buddy export sqlite --output FILE --force
+bankbuddy setup bank add
+bankbuddy setup bank list
+bankbuddy setup account add
+bankbuddy setup account list
+bankbuddy export sqlite --output FILE
+bankbuddy export sqlite --output FILE --force
 ```
 
 Password commands should prompt interactively. Passwords should not be passed as
@@ -598,7 +598,7 @@ classifier:
 
 1. TF-IDF vectorization of normalized transaction descriptions.
 2. Naive Bayes or Logistic Regression classifier.
-3. Manual training command, e.g. `bank-buddy category train`.
+3. Manual training command, e.g. `bankbuddy category train`.
 4. Local model file under the Bank Buddy app directory.
 5. Confidence threshold that falls back to Uncategorized.
 
@@ -670,7 +670,7 @@ Because this is personal finance data, durability is a first-class requirement.
 Early implementation should include:
 
 - clear database location
-- `bank-buddy export sqlite --output FILE`
+- `bankbuddy export sqlite --output FILE`
 - schema migrations that are repeatable and testable
 - import summaries that make skipped rows visible
 - clear warning that local database/export files contain actual account numbers
@@ -690,7 +690,7 @@ Cloud sync and automated backup are out of scope for early phases.
 
 - `pyproject.toml` with `uv` workflow
 - `src/bankbuddy/` package layout
-- `bank-buddy` console script
+- `bankbuddy` console script
 - test runner and baseline CI
 - SQLite connection and migration skeleton
 - app directory discovery

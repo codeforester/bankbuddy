@@ -9,7 +9,7 @@ def test_cli_version() -> None:
     result = CliRunner().invoke(main, ["--version"])
 
     assert result.exit_code == 0
-    assert "bank-buddy, version 0.1.0" in result.output
+    assert "bankbuddy, version 0.1.0" in result.output
 
 
 def test_cli_help_includes_base_runtime_options() -> None:

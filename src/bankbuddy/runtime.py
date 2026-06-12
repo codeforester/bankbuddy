@@ -14,7 +14,7 @@ from typing import Any, Callable
 import uuid
 
 
-CLI_NAME = "bank-buddy"
+CLI_NAME = "bankbuddy"
 
 
 class RuntimeConfigError(ValueError):

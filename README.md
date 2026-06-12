@@ -16,40 +16,41 @@ Set up the Python environment with `uv`:
 uv sync
 ```
 
-Run the CLI:
+Activate the project shell once, then run the CLI directly:
 
 ```bash
-uv run bank-buddy --help
-uv run bank-buddy status
-uv run bank-buddy init
-uv run bank-buddy account add \
+basectl activate bankbuddy
+bankbuddy --help
+bankbuddy status
+bankbuddy init
+bankbuddy account add \
   --bank "Bank of America" \
   --country US \
   --account-number "<actual-number>" \
   --type checking \
   --currency USD
-uv run bank-buddy account list
-uv run bank-buddy import --file path/to/boa.pdf --account-id 1
-uv run bank-buddy import inbox
-uv run bank-buddy import inbox --account-id 1
-uv run bank-buddy import history
-uv run bank-buddy import history --status failed
-uv run bank-buddy import history --status success --limit 10
-uv run bank-buddy import retry 1
-uv run bank-buddy import retry 1 --account-id 1
-uv run bank-buddy tx list
-uv run bank-buddy tx list --account-id 1 --from 2026-04-01 --to 2026-05-31
-uv run bank-buddy report spending --year 2026
-uv run bank-buddy report spending --year 2026 --month 5
-uv run bank-buddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3
-uv run bank-buddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3 --force
+bankbuddy account list
+bankbuddy import --file path/to/boa.pdf --account-id 1
+bankbuddy import inbox
+bankbuddy import inbox --account-id 1
+bankbuddy import history
+bankbuddy import history --status failed
+bankbuddy import history --status success --limit 10
+bankbuddy import retry 1
+bankbuddy import retry 1 --account-id 1
+bankbuddy tx list
+bankbuddy tx list --account-id 1 --from 2026-04-01 --to 2026-05-31
+bankbuddy report spending --year 2026
+bankbuddy report spending --year 2026 --month 5
+bankbuddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3
+bankbuddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3 --force
 ```
 
 Use Base-style runtime options before the subcommand when troubleshooting:
 
 ```bash
-uv run bank-buddy --debug status
-uv run bank-buddy -v --log-file /tmp/bank-buddy.log import \
+bankbuddy --debug status
+bankbuddy -v --log-file /tmp/bankbuddy.log import \
   --file path/to/boa.pdf \
   --account-id 1
 ```
