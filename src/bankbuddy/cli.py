@@ -16,8 +16,11 @@ from bankbuddy.database import initialize_database
 from bankbuddy.exports import ExportFailure
 from bankbuddy.exports import export_sqlite_database
 from bankbuddy.import_history import list_import_history
+from bankbuddy.import_retry import RetryFailure
+from bankbuddy.import_retry import retry_import_attempt
 from bankbuddy.inbox import import_inbox
 from bankbuddy.imports import ImportFailure
+from bankbuddy.imports import ImportSummary
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
 from bankbuddy.paths import resolve_app_paths
@@ -413,16 +416,58 @@ def import_history_command(
         return
 
     click.echo(
-        "ID  File  Canonical  Bank  Status  Started  Finished  Parsed  Imported  "
-        "Duplicates  Error"
+        "ID  File  Canonical  Bank  Account  Status  Started  Finished  Parsed  "
+        "Imported  Duplicates  Error"
     )
     for row in rows:
+        account = str(row.account_id) if row.account_id is not None else "-"
         click.echo(
             f"{row.attempt_id}  {row.file_name}  {row.canonical_file_name}  "
-            f"{row.bank_name}  {row.status}  {row.started_at}  "
+            f"{row.bank_name}  {account}  {row.status}  {row.started_at}  "
             f"{row.finished_at or '-'}  {row.rows_parsed}  {row.rows_imported}  "
             f"{row.rows_skipped_duplicate}  {row.error_message or '-'}"
         )
+
+
+@import_command.command("retry")
+@click.argument("attempt_id", type=click.IntRange(min=1))
+@click.option(
+    "--account-id",
+    type=int,
+    help="Account id override for failed attempts that did not store an account.",
+)
+@click.pass_context
+def import_retry_command(
+    ctx: click.Context,
+    attempt_id: int,
+    account_id: int | None,
+) -> None:
+    """Retry a failed import attempt."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths()
+    try:
+        summary = retry_import_attempt(
+            paths,
+            attempt_id,
+            account_id=account_id,
+            logger=runtime.log,
+        )
+    except (ImportFailure, RetryFailure) as exc:
+        runtime.log.debug("import_retry_failed attempt_id=%s reason=%s", attempt_id, exc)
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug(
+        "import_retry_finished attempt_id=%s file_name=%s rows_parsed=%s "
+        "rows_imported=%s rows_skipped_duplicate=%s",
+        attempt_id,
+        summary.file_name,
+        summary.rows_parsed,
+        summary.rows_imported,
+        summary.rows_skipped_duplicate,
+    )
+    click.echo(f"Retried attempt: {attempt_id}")
+    print_import_summary(summary)
 
 
 @import_command.command("inbox")
@@ -506,6 +551,12 @@ def run_statement_import(ctx: click.Context, file_path: Path, account_id: int) -
         summary.rows_imported,
         summary.rows_skipped_duplicate,
     )
+    print_import_summary(summary)
+
+
+def print_import_summary(summary: ImportSummary) -> None:
+    """Print the standard import summary."""
+
     click.echo(f"File: {summary.file_name}")
     click.echo(f"Bank: {summary.bank_name} | Account ID: {summary.account_id}")
     click.echo(f"Rows parsed: {summary.rows_parsed}")

@@ -121,6 +121,42 @@ def test_import_inbox_leaves_unconfigured_pdf_account_in_place(
     assert inbox_file.is_file()
 
 
+def test_import_inbox_records_failed_attempt_for_unconfigured_pdf(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    paths.inbox.mkdir(parents=True, exist_ok=True)
+    inbox_file = paths.inbox / "statement.pdf"
+    inbox_file.write_bytes(b"%PDF synthetic fixture placeholder")
+    monkeypatch.setattr(
+        "bankbuddy.imports.extract_pdf_text",
+        lambda _path: boa_pdf_text(account_number="999 999 999"),
+    )
+
+    summary = import_inbox(paths)
+
+    assert summary.failed_files == 1
+    with connect_database(paths) as conn:
+        attempt = conn.execute(
+            """
+            select
+                import_attempts.import_status,
+                import_attempts.account_id,
+                import_attempts.error_message,
+                import_files.source_path,
+                import_files.source_format
+            from import_attempts
+            join import_files using (file_id)
+            """
+        ).fetchone()
+    assert attempt["import_status"] == "failed"
+    assert attempt["account_id"] is None
+    assert "No configured account" in attempt["error_message"]
+    assert attempt["source_path"] == str(inbox_file.resolve())
+    assert attempt["source_format"] == "boa_pdf"
+
+
 def test_import_inbox_requires_account_id_for_csv(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path / "home")
     paths.inbox.mkdir(parents=True, exist_ok=True)
@@ -151,6 +187,21 @@ def test_import_inbox_leaves_unsupported_files_in_place(tmp_path) -> None:
     assert summary.unsupported_files == 1
     assert summary.results[0].status == "unsupported"
     assert "Unsupported import file type" in summary.results[0].message
+    assert inbox_file.is_file()
+
+
+def test_import_inbox_does_not_record_unsupported_files(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    paths.inbox.mkdir(parents=True, exist_ok=True)
+    inbox_file = paths.inbox / "notes.txt"
+    inbox_file.write_text("unsupported", encoding="utf-8")
+
+    summary = import_inbox(paths)
+
+    assert summary.unsupported_files == 1
+    with connect_database(paths) as conn:
+        attempt_count = conn.execute("select count(*) from import_attempts").fetchone()[0]
+    assert attempt_count == 0
     assert inbox_file.is_file()
 
 

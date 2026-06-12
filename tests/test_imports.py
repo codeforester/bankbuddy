@@ -264,6 +264,46 @@ def test_import_boa_csv_inserts_transactions_and_attempt(tmp_path) -> None:
     assert (paths.root / file_row["processed_path"]).read_text(encoding="utf-8") == BOA_CSV
 
 
+def test_import_boa_csv_records_failed_attempt_on_parse_failure(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_account(
+        paths,
+        bank_name="Bank of America",
+        country="US",
+        account_number="123456789",
+        account_type="checking",
+        currency="USD",
+    )
+    csv_path = write_boa_csv(
+        tmp_path,
+        "Date,Description\n06/10/2026,COFFEE SHOP\n",
+    )
+
+    with pytest.raises(ImportFailure, match="missing required header"):
+        import_boa_csv(paths, csv_path, account_id=account.account_id)
+
+    with connect_database(paths) as conn:
+        attempt = conn.execute(
+            """
+            select
+                import_attempts.import_status,
+                import_attempts.account_id,
+                import_attempts.error_message,
+                import_files.file_name,
+                import_files.source_path,
+                import_files.source_format
+            from import_attempts
+            join import_files using (file_id)
+            """
+        ).fetchone()
+    assert attempt["import_status"] == "failed"
+    assert attempt["account_id"] == account.account_id
+    assert "missing required header" in attempt["error_message"]
+    assert attempt["file_name"] == "boa.csv"
+    assert attempt["source_path"] == str(csv_path.resolve())
+    assert attempt["source_format"] == "boa_csv"
+
+
 def test_import_boa_csv_skips_duplicate_transactions(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path / "home")
     account = add_account(

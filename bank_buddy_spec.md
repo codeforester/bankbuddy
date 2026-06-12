@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.10
+**Version:** 1.11
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.11: Added durable failed import attempts with account metadata and
+  `import retry ATTEMPT_ID`, which retries a failed attempt by creating a new
+  attempt from the recorded source path.
 - v1.10: Added Bank of America PDF account auto-routing for `import inbox`
   when the statement account number matches exactly one configured account.
   CSV inbox imports still require `--account-id` because current BOA CSV files
@@ -337,6 +340,7 @@ Transfer candidates remain visible until reviewed.
 | `attempt_id` | INTEGER PK | Surrogate key |
 | `file_id` | INTEGER FK | References `import_files.file_id` |
 | `bank_id` | INTEGER FK | Nullable if inference failed |
+| `account_id` | INTEGER FK | Nullable; selected or inferred account when known |
 | `import_status` | TEXT NOT NULL | "success", "failed", or "partial" |
 | `started_at` | DATETIME NOT NULL | |
 | `finished_at` | DATETIME | |
@@ -349,7 +353,8 @@ Transfer candidates remain visible until reviewed.
 | `updated_at` | DATETIME NOT NULL | |
 
 This split allows failed imports to be retried without fighting a unique
-`file_hash` constraint.
+`file_hash` constraint. A retry creates a new `import_attempts` row and leaves
+the original failed row intact.
 
 ### 5.7 `category_rules`
 
@@ -429,7 +434,9 @@ metadata. Automatic watching comes later.
 8. Create or update the `import_files` row with original filename, canonical
    filename, source path, processed path, account reference, source format, and
    statement period.
-9. Start an `import_attempts` row.
+9. Start an `import_attempts` row for successful parser dispatch. If a
+   supported file fails before commit, create a failed attempt with source path,
+   source format, account id when known, and the error message.
 10. Validate staged data:
    - required fields are present
    - dates are sensible
@@ -443,7 +450,9 @@ metadata. Automatic watching comes later.
 15. Finish the import attempt with row counts and any warnings.
 
 On failure before commit, no transaction rows are written and the file remains
-in place. The failed attempt is recorded and can be retried.
+in place. The failed attempt is recorded and can be retried. Retry reuses the
+recorded source path when available, falls back to the managed processed copy
+when present, and records the retry as a new attempt.
 
 ### 6.3 Import Summary Example
 
@@ -500,7 +509,8 @@ bank-buddy import inbox --account-id ID # Process files for an explicit account
 bank-buddy import --file FILE           # Import a specific file
 bank-buddy import history               # Show import history and results
 bank-buddy import history --status STATUS --limit N
-bank-buddy import --retry ATTEMPT_ID    # Retry a failed import
+bank-buddy import retry ATTEMPT_ID      # Retry a failed import
+bank-buddy import retry ATTEMPT_ID --account-id ID
 ```
 
 ### Transaction Commands

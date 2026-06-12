@@ -88,9 +88,18 @@ def import_inbox(
         try:
             if suffix == ".csv":
                 if account_id is None:
-                    raise ImportFailure(
+                    message = (
                         "CSV inbox import requires --account-id because the "
                         "current CSV parser has no reliable account metadata."
+                    )
+                    statement_imports.record_failed_import(
+                        paths,
+                        inbox_file,
+                        source_format="boa_csv",
+                        error_message=message,
+                    )
+                    raise ImportFailure(
+                        message
                     )
                 summary = statement_imports.import_boa_csv(
                     paths,
@@ -114,9 +123,18 @@ def import_inbox(
                         account_suffix = statement_imports.account_number_suffix(
                             pdf_account_number
                         )
-                        raise ImportFailure(
+                        message = (
                             "No configured account matches Bank of America PDF "
                             f"account ending {account_suffix}."
+                        )
+                        statement_imports.record_failed_import(
+                            paths,
+                            inbox_file,
+                            source_format="boa_pdf",
+                            error_message=message,
+                        )
+                        raise ImportFailure(
+                            message
                         )
 
                 summary = statement_imports.import_boa_pdf(

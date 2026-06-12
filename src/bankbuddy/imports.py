@@ -178,25 +178,35 @@ def import_boa_csv(
 
     initialize_database(paths)
     log_debug(logger, "source_format=boa_csv parse_start file_name=%s", csv_path.name)
-    parsed_rows = parse_boa_csv(csv_path)
-    statement_start_date, statement_end_date = statement_period_from_rows(parsed_rows)
-    log_debug(
-        logger,
-        "source_format=boa_csv parse_finished rows_parsed=%s",
-        len(parsed_rows),
-    )
-    return import_boa_transactions(
-        paths,
-        csv_path,
-        account_id=account_id,
-        parsed_rows=parsed_rows,
-        source_format="boa_csv",
-        import_label="CSV",
-        require_pdf_account_match=False,
-        statement_start_date=statement_start_date,
-        statement_end_date=statement_end_date,
-        logger=logger,
-    )
+    try:
+        parsed_rows = parse_boa_csv(csv_path)
+        statement_start_date, statement_end_date = statement_period_from_rows(parsed_rows)
+        log_debug(
+            logger,
+            "source_format=boa_csv parse_finished rows_parsed=%s",
+            len(parsed_rows),
+        )
+        return import_boa_transactions(
+            paths,
+            csv_path,
+            account_id=account_id,
+            parsed_rows=parsed_rows,
+            source_format="boa_csv",
+            import_label="CSV",
+            require_pdf_account_match=False,
+            statement_start_date=statement_start_date,
+            statement_end_date=statement_end_date,
+            logger=logger,
+        )
+    except ImportFailure as exc:
+        record_failed_import(
+            paths,
+            csv_path,
+            source_format="boa_csv",
+            error_message=str(exc),
+            account_id=account_id,
+        )
+        raise
 
 
 def import_boa_pdf(
@@ -211,30 +221,40 @@ def import_boa_pdf(
 
     initialize_database(paths)
     log_debug(logger, "source_format=boa_pdf parse_start file_name=%s", pdf_path.name)
-    text = extracted_text if extracted_text is not None else extract_pdf_text(pdf_path)
-    log_debug(logger, "source_format=boa_pdf text_extracted characters=%s", len(text))
-    parsed_rows = parse_boa_pdf_text(text)
-    pdf_account_number = extract_boa_pdf_account_number(text)
-    statement_start_date, statement_end_date = extract_boa_pdf_statement_period(text)
-    log_debug(
-        logger,
-        "source_format=boa_pdf account_suffix=%s rows_parsed=%s",
-        account_number_suffix(pdf_account_number),
-        len(parsed_rows),
-    )
-    return import_boa_transactions(
-        paths,
-        pdf_path,
-        account_id=account_id,
-        parsed_rows=parsed_rows,
-        source_format="boa_pdf",
-        import_label="PDF",
-        require_pdf_account_match=True,
-        statement_start_date=statement_start_date,
-        statement_end_date=statement_end_date,
-        pdf_account_number=pdf_account_number,
-        logger=logger,
-    )
+    try:
+        text = extracted_text if extracted_text is not None else extract_pdf_text(pdf_path)
+        log_debug(logger, "source_format=boa_pdf text_extracted characters=%s", len(text))
+        parsed_rows = parse_boa_pdf_text(text)
+        pdf_account_number = extract_boa_pdf_account_number(text)
+        statement_start_date, statement_end_date = extract_boa_pdf_statement_period(text)
+        log_debug(
+            logger,
+            "source_format=boa_pdf account_suffix=%s rows_parsed=%s",
+            account_number_suffix(pdf_account_number),
+            len(parsed_rows),
+        )
+        return import_boa_transactions(
+            paths,
+            pdf_path,
+            account_id=account_id,
+            parsed_rows=parsed_rows,
+            source_format="boa_pdf",
+            import_label="PDF",
+            require_pdf_account_match=True,
+            statement_start_date=statement_start_date,
+            statement_end_date=statement_end_date,
+            pdf_account_number=pdf_account_number,
+            logger=logger,
+        )
+    except ImportFailure as exc:
+        record_failed_import(
+            paths,
+            pdf_path,
+            source_format="boa_pdf",
+            error_message=str(exc),
+            account_id=account_id,
+        )
+        raise
 
 
 def import_boa_transactions(
@@ -369,16 +389,18 @@ def import_boa_transactions(
             insert into import_attempts (
                 file_id,
                 bank_id,
+                account_id,
                 import_status,
                 finished_at,
                 rows_parsed,
                 rows_imported,
                 rows_skipped_duplicate
-            ) values (?, ?, ?, current_timestamp, ?, ?, ?)
+            ) values (?, ?, ?, ?, current_timestamp, ?, ?, ?)
             """,
             (
                 file_id,
                 bank_id,
+                account_id,
                 "success",
                 len(parsed_rows),
                 rows_imported,
@@ -662,6 +684,132 @@ def ensure_import_file(
             metadata.statement_end_date,
             metadata.account_ref,
             metadata.source_format,
+        ),
+    )
+    return int(cursor.lastrowid)
+
+
+def record_failed_import(
+    paths: AppPaths,
+    import_path: Path,
+    *,
+    source_format: str,
+    error_message: str,
+    account_id: int | None = None,
+    bank_id: int | None = None,
+    rows_parsed: int = 0,
+) -> int:
+    """Record a failed supported-file import attempt and return its attempt id."""
+
+    initialize_database(paths)
+    file_hash = hash_file(import_path)
+    with connect_database(paths) as conn:
+        resolved_bank_id = bank_id
+        resolved_account_id: int | None = None
+        if account_id is not None:
+            account = find_import_account(conn, account_id)
+            if account is not None:
+                resolved_account_id = account_id
+                resolved_bank_id = int(account["bank_id"])
+
+        file_id = ensure_import_file_for_attempt(
+            conn,
+            file_name=import_path.name,
+            file_hash=file_hash,
+            bank_id=resolved_bank_id,
+            source_path=str(import_path.resolve()),
+            source_format=source_format,
+        )
+        cursor = conn.execute(
+            """
+            insert into import_attempts (
+                file_id,
+                bank_id,
+                account_id,
+                import_status,
+                finished_at,
+                rows_parsed,
+                error_message
+            ) values (?, ?, ?, ?, current_timestamp, ?, ?)
+            """,
+            (
+                file_id,
+                resolved_bank_id,
+                resolved_account_id,
+                "failed",
+                rows_parsed,
+                error_message,
+            ),
+        )
+        conn.execute(
+            """
+            update import_files
+            set updated_at = current_timestamp
+            where file_id = ?
+            """,
+            (file_id,),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+
+def ensure_import_file_for_attempt(
+    conn: sqlite3.Connection,
+    *,
+    file_name: str,
+    file_hash: str,
+    bank_id: int | None,
+    source_path: str,
+    source_format: str,
+) -> int:
+    """Return an import file id with enough metadata for retry/history."""
+
+    row = conn.execute(
+        "select file_id from import_files where file_hash = ?",
+        (file_hash,),
+    ).fetchone()
+    if row is not None:
+        file_id = int(row["file_id"])
+        conn.execute(
+            """
+            update import_files
+            set file_name = ?,
+                original_file_name = coalesce(original_file_name, ?),
+                source_path = ?,
+                source_format = ?,
+                bank_id = coalesce(?, bank_id),
+                updated_at = current_timestamp
+            where file_id = ?
+            """,
+            (
+                file_name,
+                file_name,
+                source_path,
+                source_format,
+                bank_id,
+                file_id,
+            ),
+        )
+        return file_id
+
+    cursor = conn.execute(
+        """
+        insert into import_files (
+            file_name,
+            file_hash,
+            bank_id,
+            original_file_name,
+            source_path,
+            source_format
+        ) values (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            file_name,
+            file_hash,
+            bank_id,
+            file_name,
+            source_path,
+            source_format,
         ),
     )
     return int(cursor.lastrowid)
