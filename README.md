@@ -49,8 +49,10 @@ Primary command output goes to stdout. Runtime diagnostics go to stderr, and
 debug logs avoid full account numbers and raw statement contents.
 
 Bank of America imports support text-selectable PDF statements first, plus CSV
-files when available. Keep real statements outside the repo; Bank Buddy stores
-data in your local SQLite database.
+files when available. Successful imports are copied into
+`~/BankBuddy/processed/<bank>/<year>/<month>/` with canonical filenames while
+the original source files are left untouched. Keep real statements outside the
+repo; Bank Buddy stores data in your local SQLite database.
 
 Run tests:
 

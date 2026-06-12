@@ -6,6 +6,7 @@ from bankbuddy.accounts import add_account
 from bankbuddy.database import connect_database
 from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import extract_boa_pdf_account_number
+from bankbuddy.imports import extract_boa_pdf_statement_period
 from bankbuddy.imports import extract_pdf_text
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
@@ -113,6 +114,13 @@ def test_extract_boa_pdf_account_number_from_space_delimited_header() -> None:
     assert extract_boa_pdf_account_number(BOA_PDF_TEXT) == "12345678901145"
 
 
+def test_extract_boa_pdf_statement_period_from_header() -> None:
+    assert extract_boa_pdf_statement_period(BOA_PDF_TEXT) == (
+        "2026-06-01",
+        "2026-06-30",
+    )
+
+
 def test_extract_pdf_text_reads_synthetic_selectable_pdf(tmp_path) -> None:
     pdf_path = tmp_path / "selectable.pdf"
     write_text_pdf(pdf_path, ["Bank of America", "Account number 1234 5678 901145"])
@@ -195,7 +203,20 @@ def test_import_boa_csv_inserts_transactions_and_attempt(tmp_path) -> None:
             """
         ).fetchone()
         file_row = conn.execute(
-            "select file_name, last_success_at from import_files"
+            """
+            select
+                file_name,
+                original_file_name,
+                canonical_file_name,
+                source_path,
+                processed_path,
+                statement_start_date,
+                statement_end_date,
+                account_ref,
+                source_format,
+                last_success_at
+            from import_files
+            """
         ).fetchone()
 
     assert [dict(row) for row in transactions] == [
@@ -225,7 +246,22 @@ def test_import_boa_csv_inserts_transactions_and_attempt(tmp_path) -> None:
         "rows_skipped_duplicate": 0,
     }
     assert file_row["file_name"] == "boa.csv"
+    assert file_row["original_file_name"] == "boa.csv"
+    assert file_row["canonical_file_name"] == (
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert file_row["source_path"] == str(csv_path.resolve())
+    assert file_row["processed_path"] == (
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert file_row["statement_start_date"] == "2026-06-10"
+    assert file_row["statement_end_date"] == "2026-06-11"
+    assert file_row["account_ref"] == "6789"
+    assert file_row["source_format"] == "boa_csv"
     assert file_row["last_success_at"] is not None
+    assert csv_path.is_file()
+    assert (paths.root / file_row["processed_path"]).read_text(encoding="utf-8") == BOA_CSV
 
 
 def test_import_boa_csv_skips_duplicate_transactions(tmp_path) -> None:
@@ -245,11 +281,23 @@ def test_import_boa_csv_skips_duplicate_transactions(tmp_path) -> None:
 
     with connect_database(paths) as conn:
         transaction_count = conn.execute("select count(*) from transactions").fetchone()[0]
+        file_rows = conn.execute(
+            "select canonical_file_name, processed_path from import_files"
+        ).fetchall()
 
     assert first.rows_imported == 2
     assert second.rows_imported == 0
     assert second.rows_skipped_duplicate == 2
     assert transaction_count == 2
+    assert [dict(row) for row in file_rows] == [
+        {
+            "canonical_file_name": "bank-of-america_6789_2026-06-10_2026-06-11.csv",
+            "processed_path": (
+                "processed/bank-of-america/2026/06/"
+                "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+            ),
+        }
+    ]
 
 
 def test_import_boa_csv_requires_bank_of_america_usd_account(tmp_path) -> None:
@@ -295,6 +343,21 @@ def test_import_boa_pdf_inserts_transactions_after_account_match(tmp_path, monke
             order by transaction_date
             """
         ).fetchall()
+        file_row = conn.execute(
+            """
+            select
+                file_name,
+                original_file_name,
+                canonical_file_name,
+                source_path,
+                processed_path,
+                statement_start_date,
+                statement_end_date,
+                account_ref,
+                source_format
+            from import_files
+            """
+        ).fetchone()
     assert [dict(row) for row in transactions] == [
         {
             "transaction_date": "2026-06-10",
@@ -309,6 +372,24 @@ def test_import_boa_pdf_inserts_transactions_after_account_match(tmp_path, monke
             "description": "PAYROLL",
         },
     ]
+    assert file_row["file_name"] == "boa.pdf"
+    assert file_row["original_file_name"] == "boa.pdf"
+    assert file_row["canonical_file_name"] == (
+        "bank-of-america_1145_2026-06-01_2026-06-30.pdf"
+    )
+    assert file_row["source_path"] == str(pdf_path.resolve())
+    assert file_row["processed_path"] == (
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_1145_2026-06-01_2026-06-30.pdf"
+    )
+    assert file_row["statement_start_date"] == "2026-06-01"
+    assert file_row["statement_end_date"] == "2026-06-30"
+    assert file_row["account_ref"] == "1145"
+    assert file_row["source_format"] == "boa_pdf"
+    assert pdf_path.is_file()
+    assert (paths.root / file_row["processed_path"]).read_bytes() == (
+        b"%PDF-1.4 synthetic fixture placeholder"
+    )
 
 
 def test_import_boa_pdf_rejects_account_number_mismatch(tmp_path, monkeypatch) -> None:

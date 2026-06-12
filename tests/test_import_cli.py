@@ -119,12 +119,19 @@ def test_import_history_command_outputs_attempts(tmp_path) -> None:
     result = runner.invoke(main, ["import", "history"], env=env)
 
     assert result.exit_code == 0
-    assert "ID  File  Bank  Status  Started  Finished  Parsed  Imported  Duplicates  Error" in (
-        result.output
-    )
-    assert "2  boa.csv  Bank of America  success" in result.output
+    assert (
+        "ID  File  Canonical  Bank  Status  Started  Finished  Parsed  "
+        "Imported  Duplicates  Error"
+    ) in result.output
+    assert (
+        "2  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "Bank of America  success"
+    ) in result.output
     assert "  2  0  2  -" in result.output
-    assert "1  boa.csv  Bank of America  success" in result.output
+    assert (
+        "1  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "Bank of America  success"
+    ) in result.output
     assert "  2  2  0  -" in result.output
 
 
@@ -161,8 +168,14 @@ def test_import_history_command_filters_by_status_and_limit(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "2  boa.csv  Bank of America  success" in result.output
-    assert "1  boa.csv  Bank of America  success" not in result.output
+    assert (
+        "2  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "Bank of America  success"
+    ) in result.output
+    assert (
+        "1  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "Bank of America  success"
+    ) not in result.output
 
 
 def test_import_history_command_reports_empty_state(tmp_path) -> None:

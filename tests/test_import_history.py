@@ -43,6 +43,13 @@ def test_list_import_history_orders_newest_first(tmp_path) -> None:
 
     assert [row.attempt_id for row in rows] == [2, 1]
     assert rows[0].file_name == "boa.csv"
+    assert rows[0].canonical_file_name == (
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert rows[0].processed_path == (
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
     assert rows[0].bank_name == "Bank of America"
     assert rows[0].status == "success"
     assert rows[0].finished_at is not None

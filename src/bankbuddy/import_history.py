@@ -14,6 +14,8 @@ class ImportHistoryRow:
 
     attempt_id: int
     file_name: str
+    canonical_file_name: str
+    processed_path: str | None
     bank_name: str
     status: str
     started_at: str
@@ -47,6 +49,8 @@ def list_import_history(
             select
                 import_attempts.attempt_id,
                 import_files.file_name,
+                coalesce(import_files.canonical_file_name, '-') as canonical_file_name,
+                import_files.processed_path,
                 coalesce(banks.bank_name, '-') as bank_name,
                 import_attempts.import_status,
                 import_attempts.started_at,
@@ -69,6 +73,8 @@ def list_import_history(
         ImportHistoryRow(
             attempt_id=int(row["attempt_id"]),
             file_name=row["file_name"],
+            canonical_file_name=row["canonical_file_name"],
+            processed_path=row["processed_path"],
             bank_name=row["bank_name"],
             status=row["import_status"],
             started_at=row["started_at"],
