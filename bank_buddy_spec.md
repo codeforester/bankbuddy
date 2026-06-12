@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.6
+**Version:** 1.7
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.7: Added the first spending report command, `report spending`, with
+  year and month filters and category/currency grouping for outgoing
+  transactions.
 - v1.6: Added canonical imported-statement filenames, import file archive
   metadata, and a managed `processed/<bank>/<year>/<month>/` copy for
   successful explicit imports while leaving source files untouched.
@@ -510,6 +513,11 @@ bank-buddy report budget --year YEAR
 bank-buddy report budget --year YEAR --month MONTH
 ```
 
+The first spending report counts outgoing transactions with
+`amount_minor_units < 0`, excludes confirmed transfers, and groups by
+transaction currency and category. This keeps Uncategorized imports visible
+until category management exists.
+
 ### Category Commands
 
 ```text
@@ -667,7 +675,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - `import history`
 - `tx list`
 - canonical import file names and managed archive copies for explicit imports
-- basic spending report
+- `report spending`
 - SQLite export command
 - local tests for parser, normalization, migrations, and CLI smoke paths
 
