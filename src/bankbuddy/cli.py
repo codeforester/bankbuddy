@@ -13,6 +13,8 @@ from bankbuddy.accounts import add_account
 from bankbuddy.accounts import list_accounts
 from bankbuddy.accounts import masked_account_number
 from bankbuddy.database import initialize_database
+from bankbuddy.exports import ExportFailure
+from bankbuddy.exports import export_sqlite_database
 from bankbuddy.import_history import list_import_history
 from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import import_boa_csv
@@ -310,6 +312,43 @@ def report_spending(
             f"{row.category_name}  {row.currency}  {row.transaction_count}  "
             f"{format_minor_units(row.spending_minor_units)}"
         )
+
+
+@main.group("export")
+def export_command() -> None:
+    """Export local BankBuddy data."""
+
+
+@export_command.command("sqlite")
+@click.option(
+    "--output",
+    "output_path",
+    required=True,
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="SQLite export destination.",
+)
+@click.option("--force", is_flag=True, help="Overwrite an existing output file.")
+@click.pass_context
+def export_sqlite_command(
+    ctx: click.Context,
+    output_path: Path,
+    force: bool,
+) -> None:
+    """Export the local SQLite database."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths()
+    try:
+        exported_path = export_sqlite_database(paths, output_path, force=force)
+    except ExportFailure as exc:
+        runtime.log.debug("export_sqlite_failed reason=%s", exc)
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug("export_sqlite output=%s force=%s", exported_path, force)
+    click.echo(f"Exported SQLite database to {exported_path}")
+    click.echo(
+        "Warning: export contains sensitive financial data and actual account numbers."
+    )
 
 
 @main.group("import", invoke_without_command=True, no_args_is_help=False)

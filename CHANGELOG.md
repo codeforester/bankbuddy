@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added an `export sqlite` command for writing sensitive local SQLite
+  backups with overwrite protection.
 - Added a `report spending` command for summarizing outgoing transactions by
   category and currency for a year or month.
 - Added canonical imported-statement filenames and managed processed-file
