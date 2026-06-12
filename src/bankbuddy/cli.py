@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -19,6 +20,8 @@ from bankbuddy.paths import resolve_app_paths
 from bankbuddy.runtime import CliRuntime
 from bankbuddy.runtime import RuntimeConfigError
 from bankbuddy.runtime import create_runtime
+from bankbuddy.transactions import format_minor_units
+from bankbuddy.transactions import list_transactions
 
 
 @click.group(
@@ -197,6 +200,67 @@ def account_list(ctx: click.Context) -> None:
             f"{account.account_type}  {account.currency}  "
             f"{masked_account_number(account.account_number)}"
         )
+
+
+@main.group()
+def tx() -> None:
+    """Inspect imported transactions."""
+
+
+@tx.command("list")
+@click.option("--account-id", type=int, help="Filter by configured account id.")
+@click.option("--from", "date_from", help="Inclusive start date, YYYY-MM-DD.")
+@click.option("--to", "date_to", help="Inclusive end date, YYYY-MM-DD.")
+@click.pass_context
+def tx_list(
+    ctx: click.Context,
+    account_id: int | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> None:
+    """List imported transactions."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths()
+    normalized_date_from = validate_iso_date(date_from, "--from")
+    normalized_date_to = validate_iso_date(date_to, "--to")
+    rows = list_transactions(
+        paths,
+        account_id=account_id,
+        date_from=normalized_date_from,
+        date_to=normalized_date_to,
+    )
+    runtime.log.debug(
+        "tx_list count=%s account_id=%s date_from=%s date_to=%s",
+        len(rows),
+        account_id,
+        normalized_date_from,
+        normalized_date_to,
+    )
+    if not rows:
+        click.echo("No transactions found.")
+        return
+
+    click.echo("ID  Date  Account  Amount  Currency  Description")
+    for row in rows:
+        click.echo(
+            f"{row.transaction_id}  {row.transaction_date}  "
+            f"{row.account_display}  {format_minor_units(row.amount_minor_units)}  "
+            f"{row.currency}  {row.description}"
+        )
+
+
+def validate_iso_date(value: str | None, option_name: str) -> str | None:
+    """Validate a CLI date option as YYYY-MM-DD."""
+
+    if value is None:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date().isoformat()
+    except ValueError as exc:
+        raise click.ClickException(
+            f"Invalid date for {option_name}: {value}. Expected YYYY-MM-DD."
+        ) from exc
 
 
 @main.command("import")
