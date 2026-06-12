@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.7
+**Version:** 1.8
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.8: Added the SQLite export command with overwrite protection and a
+  sensitive-data warning for database backups that include actual account
+  numbers.
 - v1.7: Added the first spending report command, `report spending`, with
   year and month filters and category/currency grouping for outgoing
   transactions.
@@ -545,6 +548,7 @@ bank-buddy setup bank list
 bank-buddy setup account add
 bank-buddy setup account list
 bank-buddy export sqlite --output FILE
+bank-buddy export sqlite --output FILE --force
 ```
 
 Password commands should prompt interactively. Passwords should not be passed as
@@ -647,6 +651,10 @@ Early implementation should include:
 - clear warning that local database/export files contain actual account numbers
 - no destructive correction flows without confirmation
 
+The SQLite export command refuses to overwrite an existing output file unless
+`--force` is supplied, and it requires the output parent directory to already
+exist.
+
 Cloud sync and automated backup are out of scope for early phases.
 
 ---
@@ -676,7 +684,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - `tx list`
 - canonical import file names and managed archive copies for explicit imports
 - `report spending`
-- SQLite export command
+- `export sqlite`
 - local tests for parser, normalization, migrations, and CLI smoke paths
 
 ### Phase 2 — Broader Import Correctness
