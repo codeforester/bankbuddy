@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.4
+**Version:** 1.5
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.5: Added the first import attempt inspection command,
+  `import history`, with status and limit filters so processed files and
+  dedupe outcomes can be reviewed without opening SQLite directly.
 - v1.4: Added the first transaction inspection command, `tx list`, with
   account-id and inclusive date-range filters so imported rows can be reviewed
   without opening SQLite directly.
@@ -458,7 +461,8 @@ bank-buddy status                       # Show DB path, tx count, date range
 ```text
 bank-buddy import                       # Process inbox/ in Phase 2+
 bank-buddy import --file FILE           # Import a specific file
-bank-buddy import --status              # Show import history and results
+bank-buddy import history               # Show import history and results
+bank-buddy import history --status STATUS --limit N
 bank-buddy import --retry ATTEMPT_ID    # Retry a failed import
 ```
 
@@ -644,6 +648,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - import explicit CSV file
 - USD and INR schema support, with the first parser producing USD transactions
 - transaction hash deduplication with visible summary
+- `import history`
 - `tx list`
 - basic spending report
 - SQLite export command

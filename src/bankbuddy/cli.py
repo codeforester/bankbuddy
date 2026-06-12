@@ -13,6 +13,7 @@ from bankbuddy.accounts import add_account
 from bankbuddy.accounts import list_accounts
 from bankbuddy.accounts import masked_account_number
 from bankbuddy.database import initialize_database
+from bankbuddy.import_history import list_import_history
 from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
@@ -263,17 +264,80 @@ def validate_iso_date(value: str | None, option_name: str) -> str | None:
         ) from exc
 
 
-@main.command("import")
+@main.group("import", invoke_without_command=True, no_args_is_help=False)
 @click.option(
     "--file",
     "file_path",
-    required=True,
+    required=False,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="CSV file to import.",
+    help="Statement file to import.",
 )
-@click.option("--account-id", required=True, type=int, help="Configured account id.")
+@click.option("--account-id", type=int, help="Configured account id.")
 @click.pass_context
-def import_command(ctx: click.Context, file_path: Path, account_id: int) -> None:
+def import_command(
+    ctx: click.Context,
+    file_path: Path | None,
+    account_id: int | None,
+) -> None:
+    """Import statements or inspect import history."""
+
+    if ctx.invoked_subcommand is not None:
+        return
+    if file_path is None or account_id is None:
+        raise click.ClickException("Import requires --file and --account-id.")
+
+    run_statement_import(ctx, file_path, account_id)
+
+
+@import_command.command("history")
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1),
+    default=20,
+    show_default=True,
+    help="Maximum number of attempts to show.",
+)
+@click.option(
+    "--status",
+    type=click.Choice(["success", "failed", "partial"], case_sensitive=False),
+    help="Filter by import status.",
+)
+@click.pass_context
+def import_history_command(
+    ctx: click.Context,
+    limit: int,
+    status: str | None,
+) -> None:
+    """List prior import attempts."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths()
+    normalized_status = status.lower() if status else None
+    rows = list_import_history(paths, status=normalized_status, limit=limit)
+    runtime.log.debug(
+        "import_history count=%s status=%s limit=%s",
+        len(rows),
+        normalized_status,
+        limit,
+    )
+    if not rows:
+        click.echo("No import attempts found.")
+        return
+
+    click.echo(
+        "ID  File  Bank  Status  Started  Finished  Parsed  Imported  "
+        "Duplicates  Error"
+    )
+    for row in rows:
+        click.echo(
+            f"{row.attempt_id}  {row.file_name}  {row.bank_name}  {row.status}  "
+            f"{row.started_at}  {row.finished_at or '-'}  {row.rows_parsed}  "
+            f"{row.rows_imported}  {row.rows_skipped_duplicate}  "
+            f"{row.error_message or '-'}"
+        )
+
+
+def run_statement_import(ctx: click.Context, file_path: Path, account_id: int) -> None:
     """Import an explicit statement file."""
 
     runtime = runtime_from_context(ctx)
