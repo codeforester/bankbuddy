@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.5
+**Version:** 1.6
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.6: Added canonical imported-statement filenames, import file archive
+  metadata, and a managed `processed/<bank>/<year>/<month>/` copy for
+  successful explicit imports while leaving source files untouched.
 - v1.5: Added the first import attempt inspection command,
   `import history`, with status and limit filters so processed files and
   dedupe outcomes can be reviewed without opening SQLite directly.
@@ -297,9 +300,17 @@ Transfer candidates remain visible until reviewed.
 | Column | Type | Notes |
 |---|---|---|
 | `file_id` | INTEGER PK | Surrogate key |
-| `file_name` | TEXT NOT NULL | Original filename |
+| `file_name` | TEXT NOT NULL | Last observed original filename |
 | `file_hash` | TEXT NOT NULL UNIQUE | SHA-256 of file contents |
 | `bank_id` | INTEGER FK | Nullable until inferred |
+| `original_file_name` | TEXT | Original imported filename |
+| `canonical_file_name` | TEXT | Parser-derived standard filename |
+| `source_path` | TEXT | Absolute path of the explicit import source |
+| `processed_path` | TEXT | Path relative to `~/BankBuddy/` for archived copy |
+| `statement_start_date` | DATE | Inclusive statement period start |
+| `statement_end_date` | DATE | Inclusive statement period end |
+| `account_ref` | TEXT | Parser-confirmed account reference, usually last four |
+| `source_format` | TEXT | Parser/source identifier such as `boa_pdf` |
 | `first_seen_at` | DATETIME NOT NULL | |
 | `last_success_at` | DATETIME | Null until successful import |
 | `created_at` | DATETIME NOT NULL | |
@@ -371,27 +382,34 @@ types updates the existing budget record.
 ~/BankBuddy/
 |-- inbox/
 |-- processed/
-|   |-- Bank of America/
-|   |-- HDFC Bank/
-|   `-- ICICI Bank/
+|   `-- bank-of-america/
+|       `-- 2026/
+|           `-- 05/
+|               `-- bank-of-america_1145_2026-04-23_2026-05-19.pdf
 `-- exports/
 ```
 
 Phase 1 imports an explicit `--file` path. Phase 2 adds `inbox/` scanning and
-processed-file movement. Automatic watching comes later.
+movement for files Bank Buddy owns inside `inbox/`. Automatic watching comes
+later.
 
 ### 6.2 Import Process
 
 1. Import the explicit `--file` path. Later phases may scan `inbox/`.
 2. Compute SHA-256 hash of the file.
-3. Create or update the `import_files` row.
-4. If the file already has a successful import, skip by default and report it.
-5. Start an `import_attempts` row.
-6. Detect file type.
-7. Infer bank and account metadata from parser-specific signals.
-8. Parse into staged transactions.
-9. For PDF imports, validate that the full account number in the statement
+3. Detect file type.
+4. Infer bank, account reference, and statement period from parser-specific
+   signals.
+5. Parse into staged transactions.
+6. For PDF imports, validate that the full account number in the statement
    matches the selected configured account.
+7. Copy the successfully recognized source file to the managed archive using
+   the canonical filename and `processed/<bank-slug>/<year>/<month>/`
+   hierarchy. Explicit source files are left untouched.
+8. Create or update the `import_files` row with original filename, canonical
+   filename, source path, processed path, account reference, source format, and
+   statement period.
+9. Start an `import_attempts` row.
 10. Validate staged data:
    - required fields are present
    - dates are sensible
@@ -402,9 +420,7 @@ processed-file movement. Automatic watching comes later.
 12. Skip existing transaction hashes and count them in the summary.
 13. Apply deterministic category rules.
 14. Commit new valid transactions in one database transaction.
-15. For the later inbox workflow, move successfully imported files to
-    `processed/<Bank Name>/`.
-16. Finish the import attempt with row counts and any warnings.
+15. Finish the import attempt with row counts and any warnings.
 
 On failure before commit, no transaction rows are written and the file remains
 in place. The failed attempt is recorded and can be retried.
@@ -650,13 +666,14 @@ Cloud sync and automated backup are out of scope for early phases.
 - transaction hash deduplication with visible summary
 - `import history`
 - `tx list`
+- canonical import file names and managed archive copies for explicit imports
 - basic spending report
 - SQLite export command
 - local tests for parser, normalization, migrations, and CLI smoke paths
 
 ### Phase 2 — Broader Import Correctness
 
-- inbox scanning and processed-file movement
+- inbox scanning and inbox-owned processed-file movement
 - account setup/list commands
 - retry failed imports
 - HDFC and ICICI PDF parser spikes using real samples

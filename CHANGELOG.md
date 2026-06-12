@@ -9,6 +9,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added canonical imported-statement filenames and managed processed-file
+  archive copies for successful explicit imports, with original source files
+  left untouched.
 - Added an `import history` command for inspecting prior import attempts with
   status and limit filters.
 - Added a `tx list` command for inspecting imported transactions with account

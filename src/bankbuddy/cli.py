@@ -325,15 +325,15 @@ def import_history_command(
         return
 
     click.echo(
-        "ID  File  Bank  Status  Started  Finished  Parsed  Imported  "
+        "ID  File  Canonical  Bank  Status  Started  Finished  Parsed  Imported  "
         "Duplicates  Error"
     )
     for row in rows:
         click.echo(
-            f"{row.attempt_id}  {row.file_name}  {row.bank_name}  {row.status}  "
-            f"{row.started_at}  {row.finished_at or '-'}  {row.rows_parsed}  "
-            f"{row.rows_imported}  {row.rows_skipped_duplicate}  "
-            f"{row.error_message or '-'}"
+            f"{row.attempt_id}  {row.file_name}  {row.canonical_file_name}  "
+            f"{row.bank_name}  {row.status}  {row.started_at}  "
+            f"{row.finished_at or '-'}  {row.rows_parsed}  {row.rows_imported}  "
+            f"{row.rows_skipped_duplicate}  {row.error_message or '-'}"
         )
 
 

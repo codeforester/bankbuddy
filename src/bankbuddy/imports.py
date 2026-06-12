@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from hashlib import sha256
 import logging
 from pathlib import Path
@@ -13,6 +13,8 @@ import sqlite3
 
 from bankbuddy.currency import parse_amount
 from bankbuddy.database import connect_database, initialize_database
+from bankbuddy.import_files import ImportFileMetadata
+from bankbuddy.import_files import archive_statement_file
 from bankbuddy.paths import AppPaths
 
 
@@ -52,6 +54,12 @@ PDF_TRANSACTION_LINE_PATTERN = re.compile(
     r"^\s*(?P<date>\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+(?P<rest>.+?)\s*$"
 )
 PDF_MONEY_PATTERN = re.compile(r"-?\$?\d[\d,]*\.\d{2}|\(\$?\d[\d,]*\.\d{2}\)")
+BOA_STATEMENT_PERIOD_PATTERN = re.compile(
+    r"Statement\s+Period:\s*"
+    r"(?P<start>[A-Za-z]+\s+\d{1,2},\s+\d{4})\s+through\s+"
+    r"(?P<end>[A-Za-z]+\s+\d{1,2},\s+\d{4})",
+    re.IGNORECASE,
+)
 
 
 def parse_boa_csv(csv_path: Path) -> list[ParsedTransaction]:
@@ -141,6 +149,18 @@ def extract_boa_pdf_account_number(text: str) -> str:
     return account_number
 
 
+def extract_boa_pdf_statement_period(text: str) -> tuple[str, str]:
+    """Return the statement period from a Bank of America PDF header."""
+
+    match = BOA_STATEMENT_PERIOD_PATTERN.search(text)
+    if match is None:
+        raise ImportFailure("Bank of America PDF is missing a statement period.")
+    return (
+        parse_statement_header_date(match.group("start")).isoformat(),
+        parse_statement_header_date(match.group("end")).isoformat(),
+    )
+
+
 def normalize_account_number(value: str) -> str:
     """Normalize account identifiers for strict matching."""
 
@@ -159,6 +179,7 @@ def import_boa_csv(
     initialize_database(paths)
     log_debug(logger, "source_format=boa_csv parse_start file_name=%s", csv_path.name)
     parsed_rows = parse_boa_csv(csv_path)
+    statement_start_date, statement_end_date = statement_period_from_rows(parsed_rows)
     log_debug(
         logger,
         "source_format=boa_csv parse_finished rows_parsed=%s",
@@ -172,6 +193,8 @@ def import_boa_csv(
         source_format="boa_csv",
         import_label="CSV",
         require_pdf_account_match=False,
+        statement_start_date=statement_start_date,
+        statement_end_date=statement_end_date,
         logger=logger,
     )
 
@@ -191,6 +214,7 @@ def import_boa_pdf(
     log_debug(logger, "source_format=boa_pdf text_extracted characters=%s", len(text))
     parsed_rows = parse_boa_pdf_text(text)
     pdf_account_number = extract_boa_pdf_account_number(text)
+    statement_start_date, statement_end_date = extract_boa_pdf_statement_period(text)
     log_debug(
         logger,
         "source_format=boa_pdf account_suffix=%s rows_parsed=%s",
@@ -205,6 +229,8 @@ def import_boa_pdf(
         source_format="boa_pdf",
         import_label="PDF",
         require_pdf_account_match=True,
+        statement_start_date=statement_start_date,
+        statement_end_date=statement_end_date,
         pdf_account_number=pdf_account_number,
         logger=logger,
     )
@@ -219,6 +245,8 @@ def import_boa_transactions(
     source_format: str,
     import_label: str,
     require_pdf_account_match: bool,
+    statement_start_date: str,
+    statement_end_date: str,
     pdf_account_number: str | None = None,
     logger: logging.Logger | None = None,
 ) -> ImportSummary:
@@ -276,11 +304,22 @@ def import_boa_transactions(
 
         bank_id = int(account["bank_id"])
         category_id = uncategorized_category_id(conn)
+        file_metadata = archive_statement_file(
+            paths,
+            source_path=import_path,
+            bank_name=account["bank_name"],
+            account_ref=account_number_suffix(configured_account_number),
+            statement_start_date=statement_start_date,
+            statement_end_date=statement_end_date,
+            source_format=source_format,
+            file_hash=file_hash,
+        )
         file_id = ensure_import_file(
             conn,
             file_name=import_path.name,
             file_hash=file_hash,
             bank_id=bank_id,
+            metadata=file_metadata,
         )
 
         rows_imported = 0
@@ -434,6 +473,29 @@ def parse_boa_pdf_date(value: str, *, statement_year: int) -> str:
     return parse_boa_date(stripped)
 
 
+def statement_period_from_rows(
+    parsed_rows: list[ParsedTransaction],
+) -> tuple[str, str]:
+    """Return the inclusive statement period from parsed transaction dates."""
+
+    if not parsed_rows:
+        raise ImportFailure("Statement has no parseable transactions.")
+    transaction_dates = [row.transaction_date for row in parsed_rows]
+    return min(transaction_dates), max(transaction_dates)
+
+
+def parse_statement_header_date(value: str) -> date:
+    """Parse a long-form statement period date."""
+
+    stripped = " ".join(value.strip().split())
+    for date_format in ("%B %d, %Y", "%b %d, %Y"):
+        try:
+            return datetime.strptime(stripped, date_format).date()
+        except ValueError:
+            continue
+    raise ImportFailure(f"Invalid Bank of America statement period date: {value}")
+
+
 def extract_statement_year(text: str) -> int:
     """Return the statement year used for PDF rows that omit the year."""
 
@@ -529,6 +591,7 @@ def ensure_import_file(
     file_name: str,
     file_hash: str,
     bank_id: int,
+    metadata: ImportFileMetadata,
 ) -> int:
     """Return an import file id, creating it when first seen."""
 
@@ -542,20 +605,63 @@ def ensure_import_file(
             """
             update import_files
             set file_name = ?,
+                original_file_name = ?,
+                canonical_file_name = ?,
+                source_path = ?,
+                processed_path = ?,
+                statement_start_date = ?,
+                statement_end_date = ?,
+                account_ref = ?,
+                source_format = ?,
                 bank_id = ?,
                 updated_at = current_timestamp
             where file_id = ?
             """,
-            (file_name, bank_id, file_id),
+            (
+                file_name,
+                metadata.original_file_name,
+                metadata.canonical_file_name,
+                metadata.source_path,
+                metadata.processed_path,
+                metadata.statement_start_date,
+                metadata.statement_end_date,
+                metadata.account_ref,
+                metadata.source_format,
+                bank_id,
+                file_id,
+            ),
         )
         return file_id
 
     cursor = conn.execute(
         """
-        insert into import_files (file_name, file_hash, bank_id)
-        values (?, ?, ?)
+        insert into import_files (
+            file_name,
+            file_hash,
+            bank_id,
+            original_file_name,
+            canonical_file_name,
+            source_path,
+            processed_path,
+            statement_start_date,
+            statement_end_date,
+            account_ref,
+            source_format
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (file_name, file_hash, bank_id),
+        (
+            file_name,
+            file_hash,
+            bank_id,
+            metadata.original_file_name,
+            metadata.canonical_file_name,
+            metadata.source_path,
+            metadata.processed_path,
+            metadata.statement_start_date,
+            metadata.statement_end_date,
+            metadata.account_ref,
+            metadata.source_format,
+        ),
     )
     return int(cursor.lastrowid)
 
