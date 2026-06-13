@@ -43,7 +43,7 @@ from bankbuddy.transactions import list_transactions
     is_flag=True,
     help="Enable DEBUG logging on the user-facing stream.",
 )
-@click.option("--environment", help="Set the Base CLI environment.")
+@click.option("--environment", help="Set the BankBuddy environment for this command.")
 @click.option(
     "--config",
     "config_path",
@@ -88,16 +88,18 @@ def status(ctx: click.Context) -> None:
     """Show the local BankBuddy app state."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     initialized = "yes" if paths.database.exists() else "no"
     runtime.log.debug(
-        "status home=%s database=%s initialized=%s",
+        "status environment=%s data_home=%s database=%s initialized=%s",
+        paths.environment,
         paths.root,
         paths.database,
         initialized,
     )
 
-    click.echo(f"Home: {paths.root}")
+    click.echo(f"Environment: {paths.environment}")
+    click.echo(f"Data home: {paths.root}")
     click.echo(f"Database: {paths.database}")
     click.echo(f"Initialized: {initialized}")
 
@@ -108,7 +110,7 @@ def init_command(ctx: click.Context) -> None:
     """Initialize the local BankBuddy app directory and database."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     initialize_database(paths)
     runtime.log.debug("init home=%s database=%s", paths.root, paths.database)
     click.echo(f"Initialized Bank Buddy at {paths.root}")
@@ -159,7 +161,7 @@ def account_add(
     """Add a bank account."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     try:
         account = add_account(
             paths,
@@ -193,7 +195,7 @@ def account_list(ctx: click.Context) -> None:
     """List configured bank accounts."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     accounts = list_accounts(paths)
     runtime.log.debug("account_list count=%s", len(accounts))
     if not accounts:
@@ -229,7 +231,7 @@ def tx_list(
     """List imported transactions."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     normalized_date_from = validate_iso_date(date_from, "--from")
     normalized_date_to = validate_iso_date(date_to, "--to")
     rows = list_transactions(
@@ -297,7 +299,7 @@ def report_spending(
     """Summarize outgoing spending by category."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     rows = spending_report(paths, year=year, month=month)
     runtime.log.debug(
         "report_spending count=%s year=%s month=%s",
@@ -341,7 +343,7 @@ def export_sqlite_command(
     """Export the local SQLite database."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     try:
         exported_path = export_sqlite_database(paths, output_path, force=force)
     except ExportFailure as exc:
@@ -402,7 +404,7 @@ def import_history_command(
     """List prior import attempts."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     normalized_status = status.lower() if status else None
     rows = list_import_history(paths, status=normalized_status, limit=limit)
     runtime.log.debug(
@@ -445,7 +447,7 @@ def import_retry_command(
     """Retry a failed import attempt."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     try:
         summary = retry_import_attempt(
             paths,
@@ -481,7 +483,7 @@ def import_inbox_command(ctx: click.Context, account_id: int | None) -> None:
     """Import supported files from the managed inbox."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     summary = import_inbox(paths, account_id=account_id, logger=runtime.log)
     runtime.log.debug(
         "import_inbox files=%s successful=%s failed=%s unsupported=%s",
@@ -513,7 +515,7 @@ def run_statement_import(ctx: click.Context, file_path: Path, account_id: int) -
     """Import an explicit statement file."""
 
     runtime = runtime_from_context(ctx)
-    paths = resolve_app_paths()
+    paths = resolve_app_paths(environment=runtime.environment)
     runtime.log.debug(
         "import_requested file_name=%s suffix=%s account_id=%s",
         file_path.name,

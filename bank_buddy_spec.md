@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.11
+**Version:** 1.12
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.12: Added first-class BankBuddy environments. `BANKBUDDY_ENV`
+  selects the named data environment, `BANKBUDDY_HOME` remains an explicit data
+  home override, `status` reports both the environment and data home, and Base
+  activation defaults development shells to the `dev` environment.
 - v1.11: Added durable failed import attempts with account metadata and
   `import retry ATTEMPT_ID`, which retries a failed attempt by creating a new
   attempt from the recorded source path.
@@ -97,6 +101,10 @@ focused on the financial domain rather than infrastructure.
   `--log-file`, `--keep-temp`, `--environment`, and `--config`; primary output
   on stdout; diagnostics on stderr; and no full account numbers or raw
   statement contents in logs.
+- Use product-specific environment selection. `BANKBUDDY_ENV` selects the
+  BankBuddy data environment for a shell session; `--environment` overrides it
+  for one command; config `environment` is lower precedence; and `prod` is the
+  default outside a project activation.
 - Treat currency as a first-class domain value from the first implementation:
   schema, parsing, formatting, reports, and budgets must carry ISO currency
   codes even when only one parser is implemented.
@@ -110,6 +118,33 @@ focused on the financial domain rather than infrastructure.
 
 - Keep parsing, normalization, persistence, and CLI modules separate so bank
   parsers can evolve independently.
+
+### Runtime Environments
+
+BankBuddy environments are local data environments, not source checkouts.
+`BANKBUDDY_HOME` points to the data home that contains the SQLite database and
+managed directories such as `inbox`, `processed`, and `exports`.
+
+Environment precedence:
+
+1. `BANKBUDDY_HOME` overrides the data-home path.
+2. `--environment <name>` selects the environment for one command.
+3. `BANKBUDDY_ENV=<name>` selects the environment for a shell session.
+4. Config `environment` is used when no command or session value is present.
+5. `prod` is the default environment.
+
+Default data-home mapping:
+
+| Environment | Data home |
+|---|---|
+| `prod` | `~/BankBuddy` |
+| `dev` | `~/BankBuddy-dev` |
+| other names | `~/BankBuddy-<name>` |
+
+Base activation for the source checkout exports `BANKBUDDY_ENV=dev` only when
+the user has not already chosen an environment. It intentionally does not
+export `BANKBUDDY_HOME`, so switching environments in the same shell remains a
+simple `export BANKBUDDY_ENV=prod` or `export BANKBUDDY_ENV=dev`.
 
 ### Technology Stack
 
