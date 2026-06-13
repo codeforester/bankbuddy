@@ -24,6 +24,7 @@ class ImportHistoryRow:
     rows_parsed: int
     rows_imported: int
     rows_skipped_duplicate: int
+    duplicate_path: str | None
     error_message: str | None
 
 
@@ -60,6 +61,7 @@ def list_import_history(
                 import_attempts.rows_parsed,
                 import_attempts.rows_imported,
                 import_attempts.rows_skipped_duplicate,
+                import_attempts.duplicate_path,
                 import_attempts.error_message
             from import_attempts
             join import_files using (file_id)
@@ -85,6 +87,7 @@ def list_import_history(
             rows_parsed=int(row["rows_parsed"]),
             rows_imported=int(row["rows_imported"]),
             rows_skipped_duplicate=int(row["rows_skipped_duplicate"]),
+            duplicate_path=row["duplicate_path"],
             error_message=row["error_message"],
         )
         for row in rows

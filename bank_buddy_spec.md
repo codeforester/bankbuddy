@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.12
+**Version:** 1.13
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.13: Added exact duplicate inbox handling. Files with a SHA-256 hash that
+  matches a prior successful import are skipped before parser work, recorded as
+  `duplicate` attempts, and temporarily preserved under `duplicates/`.
 - v1.12: Added first-class BankBuddy environments. `BANKBUDDY_ENV`
   selects the named data environment, `BANKBUDDY_HOME` remains an explicit data
   home override, `status` reports both the environment and data home, and Base
@@ -376,7 +379,7 @@ Transfer candidates remain visible until reviewed.
 | `file_id` | INTEGER FK | References `import_files.file_id` |
 | `bank_id` | INTEGER FK | Nullable if inference failed |
 | `account_id` | INTEGER FK | Nullable; selected or inferred account when known |
-| `import_status` | TEXT NOT NULL | "success", "failed", or "partial" |
+| `import_status` | TEXT NOT NULL | "success", "failed", "partial", or "duplicate" |
 | `started_at` | DATETIME NOT NULL | |
 | `finished_at` | DATETIME | |
 | `rows_parsed` | INTEGER NOT NULL DEFAULT 0 | |
@@ -384,6 +387,7 @@ Transfer candidates remain visible until reviewed.
 | `rows_skipped_duplicate` | INTEGER NOT NULL DEFAULT 0 | |
 | `transfer_candidates` | INTEGER NOT NULL DEFAULT 0 | |
 | `error_message` | TEXT | Populated on failure |
+| `duplicate_path` | TEXT | Duplicate archive path for exact duplicate attempts |
 | `created_at` | DATETIME NOT NULL | |
 | `updated_at` | DATETIME NOT NULL | |
 
@@ -440,15 +444,24 @@ types updates the existing budget record.
 |       `-- 2026/
 |           `-- 05/
 |               `-- bank-of-america_1145_2026-04-23_2026-05-19.pdf
+|-- duplicates/
+|   `-- bank-of-america/
+|       `-- 2026/
+|           `-- 05/
+|               `-- bank-of-america_1145_2026-04-23_2026-05-19.pdf
 `-- exports/
 ```
 
 Phase 1 imports an explicit `--file` path. Phase 2 adds `inbox/` scanning and
-removes successfully imported inbox-owned source files after archival. Bank of
-America PDFs can be auto-routed by full statement account number when it
-matches exactly one configured BOA USD account. CSV inbox imports still require
-an explicit account id until a supported CSV format provides reliable account
-metadata. Automatic watching comes later.
+removes successfully imported inbox-owned source files after archival. Exact
+duplicates of prior successful imports are detected by SHA-256 hash before
+parser work, recorded as `duplicate` attempts, and moved to `duplicates/` as a
+temporary conservative preservation policy. Bank of America PDFs can be
+auto-routed by full statement account number when it matches exactly one
+configured BOA USD account. CSV inbox imports still require an explicit account
+id until a supported CSV format provides reliable account metadata, except when
+the CSV file is an exact duplicate of a prior successful import. Automatic
+watching comes later.
 
 ### 6.2 Import Process
 
@@ -456,33 +469,37 @@ metadata. Automatic watching comes later.
    `import inbox`. Use `import inbox --account-id ACCOUNT_ID` when a supported
    format cannot infer the account safely, such as current BOA CSV files.
 2. Compute SHA-256 hash of the file.
-3. Detect file type.
-4. Infer bank, account reference, and statement period from parser-specific
+3. For inbox imports, if the hash matches an `import_files` row with
+   `last_success_at`, skip parser work, preserve the source file under
+   `duplicates/<bank-slug>/<year>/<month>/`, record a `duplicate` attempt with
+   `duplicate_path`, and remove the file from `inbox/`.
+4. Detect file type.
+5. Infer bank, account reference, and statement period from parser-specific
    signals.
-5. Parse into staged transactions.
-6. For PDF imports, validate that the full account number in the statement
+6. Parse into staged transactions.
+7. For PDF imports, validate that the full account number in the statement
    matches the selected configured account.
-7. Copy the successfully recognized source file to the managed archive using
+8. Copy the successfully recognized source file to the managed archive using
    the canonical filename and `processed/<bank-slug>/<year>/<month>/`
    hierarchy. Explicit source files are left untouched; successful inbox-owned
    source files are removed after the archive copy exists.
-8. Create or update the `import_files` row with original filename, canonical
+9. Create or update the `import_files` row with original filename, canonical
    filename, source path, processed path, account reference, source format, and
    statement period.
-9. Start an `import_attempts` row for successful parser dispatch. If a
+10. Start an `import_attempts` row for successful parser dispatch. If a
    supported file fails before commit, create a failed attempt with source path,
    source format, account id when known, and the error message.
-10. Validate staged data:
+11. Validate staged data:
    - required fields are present
    - dates are sensible
    - amounts parse into integer minor units
    - currency is known
    - duplicate-looking rows in the same batch are reported
-11. Compute transaction hashes.
-12. Skip existing transaction hashes and count them in the summary.
-13. Apply deterministic category rules.
-14. Commit new valid transactions in one database transaction.
-15. Finish the import attempt with row counts and any warnings.
+12. Compute transaction hashes.
+13. Skip existing transaction hashes and count them in the summary.
+14. Apply deterministic category rules.
+15. Commit new valid transactions in one database transaction.
+16. Finish the import attempt with row counts and any warnings.
 
 On failure before commit, no transaction rows are written and the file remains
 in place. The failed attempt is recorded and can be retried. Retry reuses the

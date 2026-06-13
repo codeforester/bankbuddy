@@ -10,6 +10,7 @@ def test_resolve_app_paths_uses_explicit_root() -> None:
     assert paths.environment == "prod"
     assert str(paths.inbox) == f"{root}/inbox"
     assert str(paths.processed) == f"{root}/processed"
+    assert str(paths.duplicates) == f"{root}/duplicates"
     assert str(paths.exports) == f"{root}/exports"
     assert str(paths.database) == f"{root}/bankbuddy.sqlite3"
 

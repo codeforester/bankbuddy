@@ -64,6 +64,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "0001_core_schema",
         "0002_import_file_metadata",
         "0003_import_attempt_account",
+        "0004_duplicate_import_attempts",
     ]
     assert categories == {
         "Dining": "expense",
@@ -96,7 +97,7 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
         ).fetchone()[0]
         category_count = conn.execute("select count(*) from categories").fetchone()[0]
 
-    assert migration_count == 3
+    assert migration_count == 4
     assert category_count == 15
 
 
@@ -112,6 +113,48 @@ def test_import_attempts_schema_tracks_account_id(tmp_path) -> None:
         }
 
     assert columns["account_id"] == "INTEGER"
+
+
+def test_import_attempts_schema_allows_duplicate_status_and_path(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path)
+
+    initialize_database(paths)
+
+    with connect_database(paths) as conn:
+        columns = {
+            row[1]: row[2]
+            for row in conn.execute("pragma table_info(import_attempts)").fetchall()
+        }
+        conn.execute(
+            "insert into import_files (file_name, file_hash) values (?, ?)",
+            ("statement.csv", "file-hash"),
+        )
+        file_id = conn.execute("select file_id from import_files").fetchone()["file_id"]
+        conn.execute(
+            """
+            insert into import_attempts (
+                file_id,
+                import_status,
+                finished_at,
+                duplicate_path
+            ) values (?, ?, current_timestamp, ?)
+            """,
+            (
+                file_id,
+                "duplicate",
+                "duplicates/bank-of-america/2026/06/statement.csv",
+            ),
+        )
+        attempt = conn.execute(
+            "select import_status, duplicate_path from import_attempts"
+        ).fetchone()
+
+    assert columns["duplicate_path"] == "TEXT"
+    assert attempt["import_status"] == "duplicate"
+    assert (
+        attempt["duplicate_path"]
+        == "duplicates/bank-of-america/2026/06/statement.csv"
+    )
 
 
 def test_import_files_schema_tracks_canonical_archive_metadata(tmp_path) -> None:

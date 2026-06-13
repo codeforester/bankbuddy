@@ -24,6 +24,7 @@ class AppPaths:
     root: Path
     inbox: Path
     processed: Path
+    duplicates: Path
     exports: Path
     database: Path
 
@@ -74,6 +75,7 @@ def resolve_app_paths(
         root=resolved_root,
         inbox=resolved_root / "inbox",
         processed=resolved_root / "processed",
+        duplicates=resolved_root / "duplicates",
         exports=resolved_root / "exports",
         database=resolved_root / DATABASE_NAME,
     )
@@ -85,4 +87,5 @@ def ensure_app_dirs(paths: AppPaths) -> None:
     paths.root.mkdir(parents=True, exist_ok=True)
     paths.inbox.mkdir(parents=True, exist_ok=True)
     paths.processed.mkdir(parents=True, exist_ok=True)
+    paths.duplicates.mkdir(parents=True, exist_ok=True)
     paths.exports.mkdir(parents=True, exist_ok=True)
