@@ -1,6 +1,8 @@
 from click.testing import CliRunner
 
 from bankbuddy.cli import main
+from bankbuddy.database import connect_database
+from bankbuddy.paths import resolve_app_paths
 
 
 BOA_CSV = """Date,Description,Amount,Running Bal.
@@ -90,6 +92,135 @@ def test_import_file_command_reports_duplicate_summary(tmp_path) -> None:
     assert "Duplicate rows skipped: 2" in second.output
 
 
+def test_import_file_dry_run_reports_plan_without_writes(tmp_path) -> None:
+    csv_path = tmp_path / "boa.csv"
+    csv_path.write_text(BOA_CSV, encoding="utf-8")
+    runner = CliRunner()
+    home = tmp_path / "home"
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(
+        main,
+        ["import", "--dry-run", "--file", str(csv_path), "--account-id", "1"],
+        env=env,
+    )
+
+    assert result.exit_code == 0
+    assert "Dry run: yes" in result.output
+    assert "File: boa.csv" in result.output
+    assert "Rows parsed: 2" in result.output
+    assert "Rows that would be imported: 2" in result.output
+    assert "Rows already present: 0" in result.output
+    assert (
+        "Processed path: processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    ) in result.output
+    assert "Database changed: no" in result.output
+    assert "Files changed: none" in result.output
+    with connect_database(resolve_app_paths(home)) as conn:
+        assert conn.execute("select count(*) from transactions").fetchone()[0] == 0
+        assert conn.execute("select count(*) from import_files").fetchone()[0] == 0
+        assert conn.execute("select count(*) from import_attempts").fetchone()[0] == 0
+    assert not any((home / "processed").rglob("*"))
+
+
+def test_import_file_dry_run_reports_existing_rows_without_new_attempt(tmp_path) -> None:
+    csv_path = tmp_path / "boa.csv"
+    csv_path.write_text(BOA_CSV, encoding="utf-8")
+    runner = CliRunner()
+    home = tmp_path / "home"
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+    runner.invoke(main, ["import", "--file", str(csv_path), "--account-id", "1"], env=env)
+
+    result = runner.invoke(
+        main,
+        ["import", "--dry-run", "--file", str(csv_path), "--account-id", "1"],
+        env=env,
+    )
+
+    assert result.exit_code == 0
+    assert "Rows that would be imported: 0" in result.output
+    assert "Rows already present: 2" in result.output
+    with connect_database(resolve_app_paths(home)) as conn:
+        assert conn.execute("select count(*) from transactions").fetchone()[0] == 2
+        assert conn.execute("select count(*) from import_files").fetchone()[0] == 1
+        assert conn.execute("select count(*) from import_attempts").fetchone()[0] == 1
+
+
+def test_import_file_dry_run_parse_failure_does_not_record_attempt(tmp_path) -> None:
+    csv_path = tmp_path / "boa.csv"
+    csv_path.write_text("Date,Description\n06/10/2026,COFFEE SHOP\n", encoding="utf-8")
+    runner = CliRunner()
+    home = tmp_path / "home"
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(
+        main,
+        ["import", "--dry-run", "--file", str(csv_path), "--account-id", "1"],
+        env=env,
+    )
+
+    assert result.exit_code != 0
+    assert "missing required header" in result.output
+    with connect_database(resolve_app_paths(home)) as conn:
+        assert conn.execute("select count(*) from import_files").fetchone()[0] == 0
+        assert conn.execute("select count(*) from import_attempts").fetchone()[0] == 0
+
+
 def test_import_inbox_command_reports_success_and_removes_source(tmp_path) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
@@ -124,6 +255,53 @@ def test_import_inbox_command_reports_success_and_removes_source(tmp_path) -> No
     assert "Successful: 1" in result.output
     assert "success  statement.csv  parsed=2 imported=2 duplicates=0" in result.output
     assert not inbox_file.exists()
+
+
+def test_import_inbox_command_dry_run_reports_plan_without_removing_source(
+    tmp_path,
+) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    inbox_file = inbox / "statement.csv"
+    inbox_file.write_text(BOA_CSV, encoding="utf-8")
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(main, ["import", "inbox", "--dry-run", "--account-id", "1"], env=env)
+
+    assert result.exit_code == 0
+    assert "Dry run: yes" in result.output
+    assert "Inbox files: 1" in result.output
+    assert "Planned imports: 1" in result.output
+    assert (
+        "would-import  statement.csv  parsed=2 would-import=2 duplicates=0  "
+        "canonical=processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    ) in result.output
+    assert inbox_file.is_file()
+    with connect_database(resolve_app_paths(home)) as conn:
+        assert conn.execute("select count(*) from transactions").fetchone()[0] == 0
+        assert conn.execute("select count(*) from import_files").fetchone()[0] == 0
+        assert conn.execute("select count(*) from import_attempts").fetchone()[0] == 0
 
 
 def test_import_inbox_command_reports_duplicate_file(tmp_path) -> None:
@@ -183,6 +361,62 @@ def test_import_inbox_command_reports_duplicate_file(tmp_path) -> None:
         "duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     ) in history.output
+
+
+def test_import_inbox_command_dry_run_reports_duplicate_without_move(tmp_path) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    csv_path = tmp_path / "boa.csv"
+    csv_path.write_text(BOA_CSV, encoding="utf-8")
+    inbox_file = inbox / "statement-redownload.csv"
+    inbox_file.write_text(BOA_CSV, encoding="utf-8")
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+    runner.invoke(main, ["import", "--file", str(csv_path), "--account-id", "1"], env=env)
+
+    result = runner.invoke(main, ["import", "--dry-run", "inbox"], env=env)
+
+    assert result.exit_code == 0
+    assert "Dry run: yes" in result.output
+    assert "Planned duplicates: 1" in result.output
+    assert (
+        "would-skip-duplicate  statement-redownload.csv  "
+        "preserved=duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "canonical=processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    ) in result.output
+    assert inbox_file.is_file()
+    assert not (
+        home
+        / "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    ).exists()
+    with connect_database(resolve_app_paths(home)) as conn:
+        statuses = [
+            row["import_status"]
+            for row in conn.execute("select import_status from import_attempts")
+        ]
+    assert statuses == ["success"]
 
 
 def test_import_inbox_command_routes_pdf_without_account_id(

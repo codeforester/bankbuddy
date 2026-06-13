@@ -3,6 +3,8 @@ from bankbuddy.import_files import archive_duplicate_statement_file
 from bankbuddy.import_files import canonical_statement_filename
 from bankbuddy.import_files import duplicate_archive_relative_path
 from bankbuddy.import_files import import_archive_relative_path
+from bankbuddy.import_files import plan_duplicate_statement_path
+from bankbuddy.import_files import plan_statement_archive_file
 from bankbuddy.paths import ensure_app_dirs
 from bankbuddy.paths import resolve_app_paths
 
@@ -84,6 +86,34 @@ def test_archive_statement_file_copies_source_and_preserves_original(tmp_path) -
     assert metadata.source_format == "boa_pdf"
 
 
+def test_plan_statement_archive_file_does_not_copy_source(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    ensure_app_dirs(paths)
+    source_path = tmp_path / "eStmt_2026-05-19.pdf"
+    source_path.write_bytes(b"statement contents")
+
+    metadata = plan_statement_archive_file(
+        paths,
+        source_path=source_path,
+        bank_name="Bank of America",
+        account_ref="1145",
+        statement_start_date="2026-04-23",
+        statement_end_date="2026-05-19",
+        source_format="boa_pdf",
+        file_hash="abcd1234",
+    )
+
+    assert metadata.canonical_file_name == (
+        "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
+    )
+    assert (
+        metadata.processed_path
+        == "processed/bank-of-america/2026/05/"
+        "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
+    )
+    assert not (paths.root / metadata.processed_path).exists()
+
+
 def test_archive_statement_file_adds_hash_suffix_for_content_collision(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path / "home")
     ensure_app_dirs(paths)
@@ -117,6 +147,41 @@ def test_archive_statement_file_adds_hash_suffix_for_content_collision(tmp_path)
         "bank-of-america_1145_2026-04-23_2026-05-19-aaaabbbb.pdf"
     )
     assert (paths.root / metadata.processed_path).read_bytes() == b"second contents"
+
+
+def test_plan_statement_archive_file_uses_hash_suffix_for_content_collision(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    ensure_app_dirs(paths)
+    first_source = tmp_path / "first.pdf"
+    second_source = tmp_path / "second.pdf"
+    first_source.write_bytes(b"first contents")
+    second_source.write_bytes(b"second contents")
+    archive_statement_file(
+        paths,
+        source_path=first_source,
+        bank_name="Bank of America",
+        account_ref="1145",
+        statement_start_date="2026-04-23",
+        statement_end_date="2026-05-19",
+        source_format="boa_pdf",
+        file_hash="1111222233334444",
+    )
+
+    metadata = plan_statement_archive_file(
+        paths,
+        source_path=second_source,
+        bank_name="Bank of America",
+        account_ref="1145",
+        statement_start_date="2026-04-23",
+        statement_end_date="2026-05-19",
+        source_format="boa_pdf",
+        file_hash="aaaabbbbccccdddd",
+    )
+
+    assert metadata.canonical_file_name == (
+        "bank-of-america_1145_2026-04-23_2026-05-19-aaaabbbb.pdf"
+    )
+    assert not (paths.root / metadata.processed_path).exists()
 
 
 def test_archive_duplicate_statement_file_preserves_duplicate_copy(tmp_path) -> None:
@@ -176,3 +241,23 @@ def test_archive_duplicate_statement_file_adds_counter_for_collision(tmp_path) -
     )
     assert (paths.root / first_path).read_text(encoding="utf-8") == "first"
     assert (paths.root / second_path).read_text(encoding="utf-8") == "second"
+
+
+def test_plan_duplicate_statement_path_does_not_copy_source(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    ensure_app_dirs(paths)
+    source_path = tmp_path / "reimport.csv"
+    source_path.write_text("duplicate contents", encoding="utf-8")
+
+    duplicate_path = plan_duplicate_statement_path(
+        paths,
+        bank_name="Bank of America",
+        statement_end_date="2026-06-11",
+        canonical_file_name="bank-of-america_6789_2026-06-10_2026-06-11.csv",
+    )
+
+    assert duplicate_path == (
+        "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert not (paths.root / duplicate_path).exists()

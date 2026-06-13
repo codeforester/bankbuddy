@@ -72,6 +72,39 @@ def test_import_inbox_imports_supported_file_and_removes_source(tmp_path) -> Non
     assert (paths.root / processed_path).is_file()
 
 
+def test_import_inbox_dry_run_reports_supported_file_without_changes(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths)
+    paths.inbox.mkdir(parents=True, exist_ok=True)
+    inbox_file = paths.inbox / "statement.csv"
+    inbox_file.write_text(BOA_CSV, encoding="utf-8")
+
+    summary = import_inbox(paths, account_id=account.account_id, dry_run=True)
+
+    assert summary.total_files == 1
+    assert summary.successful_files == 1
+    assert summary.failed_files == 0
+    assert summary.results[0].file_name == "statement.csv"
+    assert summary.results[0].status == "success"
+    assert summary.results[0].message == "Would import"
+    assert summary.results[0].rows_parsed == 2
+    assert summary.results[0].rows_imported == 2
+    assert summary.results[0].rows_skipped_duplicate == 0
+    assert summary.results[0].processed_path == (
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert inbox_file.is_file()
+    with connect_database(paths) as conn:
+        transaction_count = conn.execute("select count(*) from transactions").fetchone()[0]
+        import_file_count = conn.execute("select count(*) from import_files").fetchone()[0]
+        attempt_count = conn.execute("select count(*) from import_attempts").fetchone()[0]
+    assert transaction_count == 0
+    assert import_file_count == 0
+    assert attempt_count == 0
+    assert not (paths.root / summary.results[0].processed_path).exists()
+
+
 def test_import_inbox_routes_boa_pdf_by_account_number(tmp_path, monkeypatch) -> None:
     paths = resolve_app_paths(tmp_path / "home")
     add_boa_account(paths)
@@ -97,6 +130,50 @@ def test_import_inbox_routes_boa_pdf_by_account_number(tmp_path, monkeypatch) ->
         processed_path = conn.execute("select processed_path from import_files").fetchone()[0]
     assert transaction_count == 2
     assert (paths.root / processed_path).is_file()
+
+
+def test_import_inbox_dry_run_reports_duplicate_without_archive_or_history(
+    tmp_path,
+) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths)
+    first_source = tmp_path / "first.csv"
+    first_source.write_text(BOA_CSV, encoding="utf-8")
+    import_boa_csv(paths, first_source, account_id=account.account_id)
+    paths.inbox.mkdir(parents=True, exist_ok=True)
+    inbox_file = paths.inbox / "statement-redownload.csv"
+    inbox_file.write_text(BOA_CSV, encoding="utf-8")
+
+    summary = import_inbox(paths, dry_run=True)
+
+    assert summary.total_files == 1
+    assert summary.successful_files == 0
+    assert summary.duplicate_files == 1
+    assert summary.failed_files == 0
+    assert summary.results[0].file_name == "statement-redownload.csv"
+    assert summary.results[0].status == "duplicate"
+    assert summary.results[0].message == (
+        "Would skip duplicate of processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert summary.results[0].processed_path == (
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert summary.results[0].duplicate_path == (
+        "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert inbox_file.is_file()
+    assert not (paths.root / summary.results[0].duplicate_path).exists()
+    with connect_database(paths) as conn:
+        statuses = [
+            row["import_status"]
+            for row in conn.execute(
+                "select import_status from import_attempts order by attempt_id"
+            )
+        ]
+    assert statuses == ["success"]
 
 
 def test_import_inbox_preserves_successful_duplicate_before_csv_account_check(

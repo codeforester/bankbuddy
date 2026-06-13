@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.13
+**Version:** 1.14
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.14: Added `import --dry-run` for explicit files and inbox processing.
+  Dry-run mode parses, validates, plans canonical archive paths, reports
+  transaction and exact-file duplicates, and leaves the database and filesystem
+  unchanged.
 - v1.13: Added exact duplicate inbox handling. Files with a SHA-256 hash that
   matches a prior successful import are skipped before parser work, recorded as
   `duplicate` attempts, and temporarily preserved under `duplicates/`.
@@ -463,16 +467,24 @@ id until a supported CSV format provides reliable account metadata, except when
 the CSV file is an exact duplicate of a prior successful import. Automatic
 watching comes later.
 
+All explicit-file and inbox imports can run with `--dry-run`. Dry-run mode
+uses the same parser, account validation, transaction hashing, duplicate
+detection, and canonical archive path planning as a real import, but it does
+not write transactions, import files, import attempts, duplicate attempts,
+processed files, duplicate files, or remove inbox files.
+
 ### 6.2 Import Process
 
 1. Import the explicit `--file` path, or scan visible files in `inbox/` with
    `import inbox`. Use `import inbox --account-id ACCOUNT_ID` when a supported
-   format cannot infer the account safely, such as current BOA CSV files.
+   format cannot infer the account safely, such as current BOA CSV files. Add
+   `--dry-run` to either mode to preview the plan without durable changes.
 2. Compute SHA-256 hash of the file.
 3. For inbox imports, if the hash matches an `import_files` row with
    `last_success_at`, skip parser work, preserve the source file under
    `duplicates/<bank-slug>/<year>/<month>/`, record a `duplicate` attempt with
-   `duplicate_path`, and remove the file from `inbox/`.
+   `duplicate_path`, and remove the file from `inbox/`. In dry-run mode, report
+   the planned duplicate path but do not copy, record, or remove the file.
 4. Detect file type.
 5. Infer bank, account reference, and statement period from parser-specific
    signals.
@@ -505,6 +517,9 @@ On failure before commit, no transaction rows are written and the file remains
 in place. The failed attempt is recorded and can be retried. Retry reuses the
 recorded source path when available, falls back to the managed processed copy
 when present, and records the retry as a new attempt.
+
+In dry-run mode, supported failures are reported but not recorded in
+`import_attempts`, because dry-run is intentionally read-only.
 
 ### 6.3 Import Summary Example
 
@@ -558,7 +573,9 @@ bankbuddy status                       # Show DB path, tx count, date range
 ```text
 bankbuddy import inbox                 # Process routable files in inbox/
 bankbuddy import inbox --account-id ID # Process files for an explicit account
-bankbuddy import --file FILE           # Import a specific file
+bankbuddy import --dry-run inbox       # Preview inbox processing
+bankbuddy import --file FILE --account-id ID
+bankbuddy import --dry-run --file FILE --account-id ID
 bankbuddy import history               # Show import history and results
 bankbuddy import history --status STATUS --limit N
 bankbuddy import retry ATTEMPT_ID      # Retry a failed import

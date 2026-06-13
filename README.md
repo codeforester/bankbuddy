@@ -30,7 +30,9 @@ bankbuddy account add \
   --type checking \
   --currency USD
 bankbuddy account list
+bankbuddy import --dry-run --file path/to/boa.pdf --account-id 1
 bankbuddy import --file path/to/boa.pdf --account-id 1
+bankbuddy import --dry-run inbox
 bankbuddy import inbox
 bankbuddy import inbox --account-id 1
 bankbuddy import history
@@ -103,6 +105,9 @@ import. Successful imports are copied into
 the original source files are left untouched. Exact duplicate inbox files are
 identified by SHA-256 file hash before parser work, recorded as `duplicate`
 attempts, and moved to `~/BankBuddy/duplicates/<bank>/<year>/<month>/` for now.
+Use `bankbuddy import --dry-run ...` to preview parser, duplicate, and archive
+actions without writing transactions, import history, processed files, duplicate
+files, or removing inbox files.
 Keep real statements outside the repo; Bank Buddy stores data in your local
 SQLite database.
 
