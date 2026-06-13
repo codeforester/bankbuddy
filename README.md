@@ -97,10 +97,11 @@ Primary command output goes to stdout. Runtime diagnostics go to stderr, and
 debug logs avoid full account numbers and raw statement contents.
 
 Bank of America imports support text-selectable PDF statements first, plus CSV
-files when available. BOA PDF files in `~/BankBuddy/inbox/` can be routed to a
-configured account by statement account number; CSV inbox imports still require
-`--account-id` unless the file is an exact duplicate of a prior successful
-import. Successful imports are copied into
+files when available. BOA PDF period extraction supports the statement-period
+header and the account header found in eStatement text. BOA PDF files in
+`~/BankBuddy/inbox/` can be routed to a configured account by statement account
+number; CSV inbox imports still require `--account-id` unless the file is an
+exact duplicate of a prior successful import. Successful imports are copied into
 `~/BankBuddy/processed/<bank>/<year>/<month>/` with canonical filenames while
 the original source files are left untouched. Exact duplicate inbox files are
 identified by SHA-256 file hash before parser work, recorded as `duplicate`

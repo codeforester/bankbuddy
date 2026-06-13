@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.14
+**Version:** 1.15
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.15: Extended Bank of America PDF statement-period extraction to support
+  account header lines that use `for <date> to <date> Account number`, matching
+  real eStatement text extraction.
 - v1.14: Added `import --dry-run` for explicit files and inbox processing.
   Dry-run mode parses, validates, plans canonical archive paths, reports
   transaction and exact-file duplicates, and leaves the database and filesystem
@@ -487,7 +490,9 @@ processed files, duplicate files, or remove inbox files.
    the planned duplicate path but do not copy, record, or remove the file.
 4. Detect file type.
 5. Infer bank, account reference, and statement period from parser-specific
-   signals.
+   signals. Bank of America PDFs support both `Statement Period: ... through
+   ...` headers and account header lines shaped like `for ... to ... Account
+   number`.
 6. Parse into staged transactions.
 7. For PDF imports, validate that the full account number in the statement
    matches the selected configured account.

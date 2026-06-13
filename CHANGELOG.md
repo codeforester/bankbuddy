@@ -7,6 +7,11 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed Bank of America PDF statement-period extraction for eStatement account
+  headers that use `for <date> to <date> Account number`.
+
 ### Added
 
 - Added `bankbuddy import --dry-run` for explicit file and inbox imports,
