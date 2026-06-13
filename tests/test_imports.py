@@ -122,6 +122,20 @@ def test_extract_boa_pdf_statement_period_from_header() -> None:
     )
 
 
+def test_extract_boa_pdf_statement_period_from_account_header() -> None:
+    assert extract_boa_pdf_statement_period(
+        """
+        Bank of America
+        for April 22, 2026 to May 19, 2026 Account number: 1234 5678 901145
+        Beginning balance on April 22, 2026 $1,234.56
+        Ending balance on May 19, 2026 $2,345.67
+        """
+    ) == (
+        "2026-04-22",
+        "2026-05-19",
+    )
+
+
 def test_extract_pdf_text_reads_synthetic_selectable_pdf(tmp_path) -> None:
     pdf_path = tmp_path / "selectable.pdf"
     write_text_pdf(pdf_path, ["Bank of America", "Account number 1234 5678 901145"])

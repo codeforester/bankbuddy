@@ -88,6 +88,13 @@ BOA_STATEMENT_PERIOD_PATTERN = re.compile(
     r"(?P<end>[A-Za-z]+\s+\d{1,2},\s+\d{4})",
     re.IGNORECASE,
 )
+BOA_ACCOUNT_HEADER_PERIOD_PATTERN = re.compile(
+    r"\bfor\s+"
+    r"(?P<start>[A-Za-z]+\s+\d{1,2},\s+\d{4})\s+to\s+"
+    r"(?P<end>[A-Za-z]+\s+\d{1,2},\s+\d{4})\s+"
+    r"Account\s+number\b",
+    re.IGNORECASE,
+)
 
 
 def parse_boa_csv(csv_path: Path) -> list[ParsedTransaction]:
@@ -181,6 +188,8 @@ def extract_boa_pdf_statement_period(text: str) -> tuple[str, str]:
     """Return the statement period from a Bank of America PDF header."""
 
     match = BOA_STATEMENT_PERIOD_PATTERN.search(text)
+    if match is None:
+        match = BOA_ACCOUNT_HEADER_PERIOD_PATTERN.search(text)
     if match is None:
         raise ImportFailure("Bank of America PDF is missing a statement period.")
     return (
