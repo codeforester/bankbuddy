@@ -46,6 +46,41 @@ bankbuddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3
 bankbuddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3 --force
 ```
 
+## Environments
+
+BankBuddy keeps separate local data homes for named environments. Outside an
+activated project shell, the CLI defaults to `prod` at `~/BankBuddy`. A Base
+activated BankBuddy shell defaults to `dev` by exporting `BANKBUDDY_ENV=dev`,
+which maps to `~/BankBuddy-dev`.
+
+Use `status` to confirm the active environment and database:
+
+```bash
+bankbuddy status
+```
+
+Switch the current shell by exporting `BANKBUDDY_ENV`:
+
+```bash
+export BANKBUDDY_ENV=prod
+bankbuddy status
+
+export BANKBUDDY_ENV=dev
+bankbuddy status
+```
+
+For a one-command override, use `--environment` before the subcommand:
+
+```bash
+bankbuddy --environment prod status
+bankbuddy --environment dev import inbox
+```
+
+`BANKBUDDY_HOME` is a data-home override for the database and managed folders
+such as `inbox`, `processed`, and `exports`. It does not point to the source
+checkout. When set, it wins over the environment-to-home mapping while
+`BANKBUDDY_ENV` still names the active environment.
+
 Use Base-style runtime options before the subcommand when troubleshooting:
 
 ```bash

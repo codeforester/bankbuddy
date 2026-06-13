@@ -43,9 +43,49 @@ def test_config_can_enable_debug_logging(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Home:" in result.stdout
+    assert "Environment: qa" in result.stdout
+    assert "Data home:" in result.stdout
     assert "DEBUG" in result.stderr
     assert "environment=qa" in result.stderr
+
+
+def test_status_reports_environment_and_data_home(tmp_path) -> None:
+    result = CliRunner().invoke(
+        main,
+        ["status"],
+        env={
+            "BANKBUDDY_HOME": str(tmp_path / "home"),
+            "BANKBUDDY_ENV": "dev",
+        },
+    )
+
+    assert result.exit_code == 0
+    assert "Environment: dev" in result.output
+    assert f"Data home: {tmp_path / 'home'}" in result.output
+    assert f"Database: {tmp_path / 'home' / 'bankbuddy.sqlite3'}" in result.output
+
+
+def test_status_environment_option_selects_data_home(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    result = CliRunner().invoke(main, ["--environment", "dev", "status"], env={})
+
+    assert result.exit_code == 0
+    assert "Environment: dev" in result.output
+    assert f"Data home: {tmp_path / 'BankBuddy-dev'}" in result.output
+    assert f"Database: {tmp_path / 'BankBuddy-dev' / 'bankbuddy.sqlite3'}" in result.output
+
+
+def test_status_ignores_base_cli_environment(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    result = CliRunner().invoke(
+        main,
+        ["status"],
+        env={"BASE_CLI_ENVIRONMENT": "qa"},
+    )
+
+    assert result.exit_code == 0
+    assert "Environment: prod" in result.output
+    assert f"Data home: {tmp_path / 'BankBuddy'}" in result.output
 
 
 def test_status_reports_uninitialized_database(tmp_path) -> None:
@@ -56,7 +96,8 @@ def test_status_reports_uninitialized_database(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert f"Home: {tmp_path}" in result.output
+    assert "Environment: prod" in result.output
+    assert f"Data home: {tmp_path}" in result.output
     assert f"Database: {tmp_path / 'bankbuddy.sqlite3'}" in result.output
     assert "Initialized: no" in result.output
 

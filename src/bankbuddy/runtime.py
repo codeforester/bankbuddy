@@ -13,6 +13,10 @@ import time
 from typing import Any, Callable
 import uuid
 
+from bankbuddy.paths import BANKBUDDY_ENV_ENV
+from bankbuddy.paths import DEFAULT_ENVIRONMENT
+from bankbuddy.paths import normalize_environment
+
 
 CLI_NAME = "bankbuddy"
 
@@ -89,7 +93,12 @@ def create_runtime(
     explicit_config = Path(config_path).expanduser() if config_path else None
     config = load_config(project_root, explicit_config)
 
-    resolved_environment = environment or config.get("environment") or "dev"
+    try:
+        resolved_environment = normalize_environment(
+            environment or config.get("environment") or DEFAULT_ENVIRONMENT
+        )
+    except ValueError as exc:
+        raise RuntimeConfigError(str(exc)) from exc
     resolved_debug = debug or str(config.get("log_level", "")).lower() == "debug"
     resolved_keep_temp = keep_temp or bool(config.get("keep_temp"))
 
@@ -318,8 +327,8 @@ def load_config(
         config = merge_dicts(config, load_yaml_file(explicit_config))
 
     env_config: dict[str, Any] = {}
-    if "BASE_CLI_ENVIRONMENT" in os.environ:
-        env_config["environment"] = os.environ["BASE_CLI_ENVIRONMENT"]
+    if BANKBUDDY_ENV_ENV in os.environ:
+        env_config["environment"] = os.environ[BANKBUDDY_ENV_ENV]
     if "BASE_CLI_LOG_LEVEL" in os.environ:
         env_config["log_level"] = os.environ["BASE_CLI_LOG_LEVEL"]
     elif os.environ.get("LOG_DEBUG", "").lower() in ("1", "true"):
