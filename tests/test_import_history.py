@@ -60,6 +60,55 @@ def test_list_import_history_orders_newest_first(tmp_path) -> None:
     assert rows[0].error_message is None
 
 
+def test_list_import_history_reports_duplicate_path(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths)
+    csv_path = write_csv(tmp_path, "boa.csv")
+    import_boa_csv(paths, csv_path, account_id=account.account_id)
+
+    with connect_database(paths) as conn:
+        file_row = conn.execute(
+            """
+            select
+                import_files.file_id,
+                import_files.bank_id,
+                import_files.processed_path
+            from import_files
+            """
+        ).fetchone()
+        conn.execute(
+            """
+            insert into import_attempts (
+                file_id,
+                bank_id,
+                account_id,
+                import_status,
+                finished_at,
+                duplicate_path
+            ) values (?, ?, ?, ?, current_timestamp, ?)
+            """,
+            (
+                file_row["file_id"],
+                file_row["bank_id"],
+                account.account_id,
+                "duplicate",
+                "duplicates/bank-of-america/2026/06/"
+                "bank-of-america_6789_2026-06-10_2026-06-11.csv",
+            ),
+        )
+        conn.commit()
+
+    rows = list_import_history(paths, status="duplicate", limit=1)
+
+    assert len(rows) == 1
+    assert rows[0].status == "duplicate"
+    assert rows[0].processed_path == file_row["processed_path"]
+    assert rows[0].duplicate_path == (
+        "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+
+
 def test_list_import_history_filters_by_status_and_limit(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path / "home")
     account = add_boa_account(paths)

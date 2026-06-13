@@ -9,6 +9,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added exact duplicate inbox import detection using SHA-256 file hashes, with
+  duplicate attempts recorded in history and duplicate source files preserved
+  under the managed `duplicates/` directory.
 - Added first-class BankBuddy environments selected by `BANKBUDDY_ENV`, visible
   in `status`, and defaulted to `dev` during Base activation.
 - Added durable failed import attempts and an `import retry` command for

@@ -34,6 +34,7 @@ bankbuddy import --file path/to/boa.pdf --account-id 1
 bankbuddy import inbox
 bankbuddy import inbox --account-id 1
 bankbuddy import history
+bankbuddy import history --status duplicate
 bankbuddy import history --status failed
 bankbuddy import history --status success --limit 10
 bankbuddy import retry 1
@@ -77,9 +78,9 @@ bankbuddy --environment dev import inbox
 ```
 
 `BANKBUDDY_HOME` is a data-home override for the database and managed folders
-such as `inbox`, `processed`, and `exports`. It does not point to the source
-checkout. When set, it wins over the environment-to-home mapping while
-`BANKBUDDY_ENV` still names the active environment.
+such as `inbox`, `processed`, `duplicates`, and `exports`. It does not point to
+the source checkout. When set, it wins over the environment-to-home mapping
+while `BANKBUDDY_ENV` still names the active environment.
 
 Use Base-style runtime options before the subcommand when troubleshooting:
 
@@ -96,10 +97,14 @@ debug logs avoid full account numbers and raw statement contents.
 Bank of America imports support text-selectable PDF statements first, plus CSV
 files when available. BOA PDF files in `~/BankBuddy/inbox/` can be routed to a
 configured account by statement account number; CSV inbox imports still require
-`--account-id`. Successful imports are copied into
+`--account-id` unless the file is an exact duplicate of a prior successful
+import. Successful imports are copied into
 `~/BankBuddy/processed/<bank>/<year>/<month>/` with canonical filenames while
-the original source files are left untouched. Keep real statements outside the
-repo; Bank Buddy stores data in your local SQLite database.
+the original source files are left untouched. Exact duplicate inbox files are
+identified by SHA-256 file hash before parser work, recorded as `duplicate`
+attempts, and moved to `~/BankBuddy/duplicates/<bank>/<year>/<month>/` for now.
+Keep real statements outside the repo; Bank Buddy stores data in your local
+SQLite database.
 
 Supported import failures are recorded in `import history`. Retrying a failed
 attempt creates a new attempt and leaves the original failed attempt intact.

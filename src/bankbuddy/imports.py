@@ -46,6 +46,19 @@ class ImportSummary:
     rows_skipped_duplicate: int
 
 
+@dataclass(frozen=True)
+class SuccessfulImportFile:
+    """Metadata for a file that was already imported successfully."""
+
+    file_id: int
+    bank_id: int
+    bank_name: str
+    account_id: int | None
+    canonical_file_name: str
+    processed_path: str
+    statement_end_date: str
+
+
 ACCOUNT_NUMBER_PATTERN = re.compile(
     r"\b(?:account|acct)\s*(?:number|no\.?|#)?\s*[:#]?\s*((?:\d[\s-]*){6,})",
     re.IGNORECASE,
@@ -687,6 +700,101 @@ def ensure_import_file(
         ),
     )
     return int(cursor.lastrowid)
+
+
+def find_successful_import_by_hash(
+    paths: AppPaths,
+    file_hash: str,
+) -> SuccessfulImportFile | None:
+    """Return successful import metadata for an exact file hash match."""
+
+    initialize_database(paths)
+    with connect_database(paths) as conn:
+        row = conn.execute(
+            """
+            select
+                import_files.file_id,
+                import_files.bank_id,
+                banks.bank_name,
+                import_files.canonical_file_name,
+                import_files.processed_path,
+                import_files.statement_end_date,
+                (
+                    select import_attempts.account_id
+                    from import_attempts
+                    where import_attempts.file_id = import_files.file_id
+                      and import_attempts.import_status = 'success'
+                    order by import_attempts.attempt_id desc
+                    limit 1
+                ) as account_id
+            from import_files
+            left join banks on banks.bank_id = import_files.bank_id
+            where import_files.file_hash = ?
+              and import_files.last_success_at is not null
+            """,
+            (file_hash,),
+        ).fetchone()
+
+    if row is None:
+        return None
+    if (
+        row["bank_id"] is None
+        or row["bank_name"] is None
+        or row["canonical_file_name"] is None
+        or row["processed_path"] is None
+        or row["statement_end_date"] is None
+    ):
+        return None
+    return SuccessfulImportFile(
+        file_id=int(row["file_id"]),
+        bank_id=int(row["bank_id"]),
+        bank_name=row["bank_name"],
+        account_id=int(row["account_id"]) if row["account_id"] is not None else None,
+        canonical_file_name=row["canonical_file_name"],
+        processed_path=row["processed_path"],
+        statement_end_date=row["statement_end_date"],
+    )
+
+
+def record_duplicate_import(
+    paths: AppPaths,
+    duplicate: SuccessfulImportFile,
+    *,
+    duplicate_path: str,
+) -> int:
+    """Record an exact duplicate import attempt and return its attempt id."""
+
+    initialize_database(paths)
+    with connect_database(paths) as conn:
+        cursor = conn.execute(
+            """
+            insert into import_attempts (
+                file_id,
+                bank_id,
+                account_id,
+                import_status,
+                finished_at,
+                duplicate_path
+            ) values (?, ?, ?, ?, current_timestamp, ?)
+            """,
+            (
+                duplicate.file_id,
+                duplicate.bank_id,
+                duplicate.account_id,
+                "duplicate",
+                duplicate_path,
+            ),
+        )
+        conn.execute(
+            """
+            update import_files
+            set updated_at = current_timestamp
+            where file_id = ?
+            """,
+            (duplicate.file_id,),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
 
 
 def record_failed_import(

@@ -392,7 +392,10 @@ def import_command(
 )
 @click.option(
     "--status",
-    type=click.Choice(["success", "failed", "partial"], case_sensitive=False),
+    type=click.Choice(
+        ["success", "failed", "partial", "duplicate"],
+        case_sensitive=False,
+    ),
     help="Filter by import status.",
 )
 @click.pass_context
@@ -418,16 +421,18 @@ def import_history_command(
         return
 
     click.echo(
-        "ID  File  Canonical  Bank  Account  Status  Started  Finished  Parsed  "
-        "Imported  Duplicates  Error"
+        "ID  File  Canonical  Processed  Duplicate  Bank  Account  Status  "
+        "Started  Finished  Parsed  Imported  Duplicates  Error"
     )
     for row in rows:
         account = str(row.account_id) if row.account_id is not None else "-"
         click.echo(
             f"{row.attempt_id}  {row.file_name}  {row.canonical_file_name}  "
+            f"{row.processed_path or '-'}  {row.duplicate_path or '-'}  "
             f"{row.bank_name}  {account}  {row.status}  {row.started_at}  "
-            f"{row.finished_at or '-'}  {row.rows_parsed}  {row.rows_imported}  "
-            f"{row.rows_skipped_duplicate}  {row.error_message or '-'}"
+            f"{row.finished_at or '-'}  {row.rows_parsed}  "
+            f"{row.rows_imported}  {row.rows_skipped_duplicate}  "
+            f"{row.error_message or '-'}"
         )
 
 
@@ -498,6 +503,7 @@ def import_inbox_command(ctx: click.Context, account_id: int | None) -> None:
 
     click.echo(f"Inbox files: {summary.total_files}")
     click.echo(f"Successful: {summary.successful_files}")
+    click.echo(f"Duplicates: {summary.duplicate_files}")
     click.echo(f"Failed: {summary.failed_files}")
     click.echo(f"Unsupported: {summary.unsupported_files}")
     for result in summary.results:
@@ -506,6 +512,11 @@ def import_inbox_command(ctx: click.Context, account_id: int | None) -> None:
                 f"success  {result.file_name}  parsed={result.rows_parsed} "
                 f"imported={result.rows_imported} "
                 f"duplicates={result.rows_skipped_duplicate}"
+            )
+        elif result.status == "duplicate":
+            click.echo(
+                f"duplicate  {result.file_name}  preserved={result.duplicate_path}  "
+                f"canonical={result.processed_path}"
             )
         else:
             click.echo(f"{result.status}  {result.file_name}  {result.message}")

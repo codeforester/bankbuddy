@@ -126,6 +126,65 @@ def test_import_inbox_command_reports_success_and_removes_source(tmp_path) -> No
     assert not inbox_file.exists()
 
 
+def test_import_inbox_command_reports_duplicate_file(tmp_path) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    csv_path = tmp_path / "boa.csv"
+    csv_path.write_text(BOA_CSV, encoding="utf-8")
+    inbox_file = inbox / "statement-redownload.csv"
+    inbox_file.write_text(BOA_CSV, encoding="utf-8")
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+    runner.invoke(main, ["import", "--file", str(csv_path), "--account-id", "1"], env=env)
+
+    result = runner.invoke(main, ["import", "inbox"], env=env)
+
+    assert result.exit_code == 0
+    assert "Inbox files: 1" in result.output
+    assert "Successful: 0" in result.output
+    assert "Duplicates: 1" in result.output
+    assert (
+        "duplicate  statement-redownload.csv  "
+        "preserved=duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "canonical=processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    ) in result.output
+    assert not inbox_file.exists()
+
+    history = runner.invoke(main, ["import", "history", "--status", "duplicate"], env=env)
+
+    assert history.exit_code == 0
+    assert "duplicate" in history.output
+    assert (
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    ) in history.output
+    assert (
+        "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    ) in history.output
+
+
 def test_import_inbox_command_routes_pdf_without_account_id(
     tmp_path,
     monkeypatch,
@@ -259,16 +318,20 @@ def test_import_history_command_outputs_attempts(tmp_path) -> None:
 
     assert result.exit_code == 0
     assert (
-        "ID  File  Canonical  Bank  Account  Status  Started  Finished  "
-        "Parsed  Imported  Duplicates  Error"
+        "ID  File  Canonical  Processed  Duplicate  Bank  Account  Status  "
+        "Started  Finished  Parsed  Imported  Duplicates  Error"
     ) in result.output
     assert (
         "2  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv  -  "
         "Bank of America  1  success"
     ) in result.output
     assert "  2  0  2  -" in result.output
     assert (
         "1  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv  -  "
         "Bank of America  1  success"
     ) in result.output
     assert "  2  2  0  -" in result.output
@@ -309,10 +372,14 @@ def test_import_history_command_filters_by_status_and_limit(tmp_path) -> None:
     assert result.exit_code == 0
     assert (
         "2  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv  -  "
         "Bank of America  1  success"
     ) in result.output
     assert (
         "1  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv  -  "
         "Bank of America  1  success"
     ) not in result.output
 

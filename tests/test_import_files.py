@@ -1,5 +1,7 @@
 from bankbuddy.import_files import archive_statement_file
+from bankbuddy.import_files import archive_duplicate_statement_file
 from bankbuddy.import_files import canonical_statement_filename
+from bankbuddy.import_files import duplicate_archive_relative_path
 from bankbuddy.import_files import import_archive_relative_path
 from bankbuddy.paths import ensure_app_dirs
 from bankbuddy.paths import resolve_app_paths
@@ -27,6 +29,20 @@ def test_import_archive_relative_path_groups_by_bank_year_and_month() -> None:
     assert (
         relative_path.as_posix()
         == "processed/bank-of-america/2026/05/"
+        "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
+    )
+
+
+def test_duplicate_archive_relative_path_groups_by_bank_year_and_month() -> None:
+    relative_path = duplicate_archive_relative_path(
+        bank_name="Bank of America",
+        statement_end_date="2026-05-19",
+        canonical_file_name="bank-of-america_1145_2026-04-23_2026-05-19.pdf",
+    )
+
+    assert (
+        relative_path.as_posix()
+        == "duplicates/bank-of-america/2026/05/"
         "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
     )
 
@@ -101,3 +117,62 @@ def test_archive_statement_file_adds_hash_suffix_for_content_collision(tmp_path)
         "bank-of-america_1145_2026-04-23_2026-05-19-aaaabbbb.pdf"
     )
     assert (paths.root / metadata.processed_path).read_bytes() == b"second contents"
+
+
+def test_archive_duplicate_statement_file_preserves_duplicate_copy(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    ensure_app_dirs(paths)
+    source_path = tmp_path / "reimport.csv"
+    source_path.write_text("duplicate contents", encoding="utf-8")
+
+    duplicate_path = archive_duplicate_statement_file(
+        paths,
+        source_path=source_path,
+        bank_name="Bank of America",
+        statement_end_date="2026-06-11",
+        canonical_file_name="bank-of-america_6789_2026-06-10_2026-06-11.csv",
+    )
+
+    assert duplicate_path == (
+        "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert source_path.is_file()
+    assert (paths.root / duplicate_path).read_text(encoding="utf-8") == (
+        "duplicate contents"
+    )
+
+
+def test_archive_duplicate_statement_file_adds_counter_for_collision(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    ensure_app_dirs(paths)
+    first_source = tmp_path / "first.csv"
+    second_source = tmp_path / "second.csv"
+    first_source.write_text("first", encoding="utf-8")
+    second_source.write_text("second", encoding="utf-8")
+
+    first_path = archive_duplicate_statement_file(
+        paths,
+        source_path=first_source,
+        bank_name="Bank of America",
+        statement_end_date="2026-06-11",
+        canonical_file_name="bank-of-america_6789_2026-06-10_2026-06-11.csv",
+    )
+    second_path = archive_duplicate_statement_file(
+        paths,
+        source_path=second_source,
+        bank_name="Bank of America",
+        statement_end_date="2026-06-11",
+        canonical_file_name="bank-of-america_6789_2026-06-10_2026-06-11.csv",
+    )
+
+    assert first_path == (
+        "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert second_path == (
+        "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11-duplicate-2.csv"
+    )
+    assert (paths.root / first_path).read_text(encoding="utf-8") == "first"
+    assert (paths.root / second_path).read_text(encoding="utf-8") == "second"

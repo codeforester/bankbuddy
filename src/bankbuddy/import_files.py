@@ -64,6 +64,24 @@ def import_archive_relative_path(
     )
 
 
+def duplicate_archive_relative_path(
+    *,
+    bank_name: str,
+    statement_end_date: str,
+    canonical_file_name: str,
+) -> Path:
+    """Return the duplicate archive path relative to the BankBuddy home directory."""
+
+    period_end = date.fromisoformat(statement_end_date)
+    return Path(
+        "duplicates",
+        slugify_bank_name(bank_name),
+        f"{period_end.year:04d}",
+        f"{period_end.month:02d}",
+        canonical_file_name,
+    )
+
+
 def archive_statement_file(
     paths: AppPaths,
     *,
@@ -116,6 +134,42 @@ def archive_statement_file(
         account_ref=slugify_account_ref(account_ref),
         source_format=source_format,
     )
+
+
+def archive_duplicate_statement_file(
+    paths: AppPaths,
+    *,
+    source_path: Path,
+    bank_name: str,
+    statement_end_date: str,
+    canonical_file_name: str,
+) -> str:
+    """Copy an exact duplicate statement into managed duplicate storage."""
+
+    relative_path = duplicate_archive_relative_path(
+        bank_name=bank_name,
+        statement_end_date=statement_end_date,
+        canonical_file_name=canonical_file_name,
+    )
+    destination = paths.root / relative_path
+    if destination.exists():
+        path = Path(canonical_file_name)
+        duplicate_number = 2
+        while True:
+            candidate_name = f"{path.stem}-duplicate-{duplicate_number}{path.suffix}"
+            relative_path = duplicate_archive_relative_path(
+                bank_name=bank_name,
+                statement_end_date=statement_end_date,
+                canonical_file_name=candidate_name,
+            )
+            destination = paths.root / relative_path
+            if not destination.exists():
+                break
+            duplicate_number += 1
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    copy2(source_path, destination)
+    return relative_path.as_posix()
 
 
 def canonical_file_name_with_hash(canonical_file_name: str, *, file_hash: str) -> str:

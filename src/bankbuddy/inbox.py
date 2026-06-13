@@ -9,6 +9,7 @@ from pathlib import Path
 import bankbuddy.imports as statement_imports
 from bankbuddy.database import connect_database
 from bankbuddy.database import initialize_database
+from bankbuddy.import_files import archive_duplicate_statement_file
 from bankbuddy.imports import ImportFailure
 from bankbuddy.paths import AppPaths
 
@@ -23,6 +24,8 @@ class InboxFileResult:
     rows_parsed: int = 0
     rows_imported: int = 0
     rows_skipped_duplicate: int = 0
+    processed_path: str | None = None
+    duplicate_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,10 @@ class InboxImportSummary:
     @property
     def unsupported_files(self) -> int:
         return sum(1 for result in self.results if result.status == "unsupported")
+
+    @property
+    def duplicate_files(self) -> int:
+        return sum(1 for result in self.results if result.status == "duplicate")
 
 
 def iter_inbox_files(paths: AppPaths) -> list[Path]:
@@ -81,6 +88,36 @@ def import_inbox(
                     file_name=inbox_file.name,
                     status="unsupported",
                     message=f"Unsupported import file type: {suffix or '(none)'}",
+                )
+            )
+            continue
+
+        file_hash = statement_imports.hash_file(inbox_file)
+        duplicate = statement_imports.find_successful_import_by_hash(paths, file_hash)
+        if duplicate is not None:
+            duplicate_path = archive_duplicate_statement_file(
+                paths,
+                source_path=inbox_file,
+                bank_name=duplicate.bank_name,
+                statement_end_date=duplicate.statement_end_date,
+                canonical_file_name=duplicate.canonical_file_name,
+            )
+            statement_imports.record_duplicate_import(
+                paths,
+                duplicate,
+                duplicate_path=duplicate_path,
+            )
+            inbox_file.unlink()
+            results.append(
+                InboxFileResult(
+                    file_name=inbox_file.name,
+                    status="duplicate",
+                    message=(
+                        f"Duplicate of {duplicate.processed_path}; "
+                        f"preserved at {duplicate_path}"
+                    ),
+                    processed_path=duplicate.processed_path,
+                    duplicate_path=duplicate_path,
                 )
             )
             continue

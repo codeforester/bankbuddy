@@ -2,6 +2,7 @@ from bankbuddy.accounts import add_account
 from bankbuddy.database import connect_database
 from bankbuddy.inbox import import_inbox
 from bankbuddy.inbox import iter_inbox_files
+from bankbuddy.imports import import_boa_csv
 from bankbuddy.paths import resolve_app_paths
 
 
@@ -96,6 +97,88 @@ def test_import_inbox_routes_boa_pdf_by_account_number(tmp_path, monkeypatch) ->
         processed_path = conn.execute("select processed_path from import_files").fetchone()[0]
     assert transaction_count == 2
     assert (paths.root / processed_path).is_file()
+
+
+def test_import_inbox_preserves_successful_duplicate_before_csv_account_check(
+    tmp_path,
+) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths)
+    first_source = tmp_path / "first.csv"
+    first_source.write_text(BOA_CSV, encoding="utf-8")
+    import_boa_csv(paths, first_source, account_id=account.account_id)
+    paths.inbox.mkdir(parents=True, exist_ok=True)
+    inbox_file = paths.inbox / "statement-redownload.csv"
+    inbox_file.write_text(BOA_CSV, encoding="utf-8")
+
+    summary = import_inbox(paths)
+
+    assert summary.total_files == 1
+    assert summary.successful_files == 0
+    assert summary.duplicate_files == 1
+    assert summary.failed_files == 0
+    assert summary.results[0].file_name == "statement-redownload.csv"
+    assert summary.results[0].status == "duplicate"
+    assert summary.results[0].rows_imported == 0
+    assert summary.results[0].rows_skipped_duplicate == 0
+    assert summary.results[0].processed_path == (
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert summary.results[0].duplicate_path == (
+        "duplicates/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    assert not inbox_file.exists()
+    assert (paths.root / summary.results[0].duplicate_path).read_text(
+        encoding="utf-8"
+    ) == BOA_CSV
+    with connect_database(paths) as conn:
+        transaction_count = conn.execute("select count(*) from transactions").fetchone()[0]
+        import_file_count = conn.execute("select count(*) from import_files").fetchone()[0]
+        attempts = conn.execute(
+            """
+            select import_status, rows_parsed, rows_imported, duplicate_path
+            from import_attempts
+            order by attempt_id
+            """
+        ).fetchall()
+
+    assert transaction_count == 2
+    assert import_file_count == 1
+    assert [attempt["import_status"] for attempt in attempts] == [
+        "success",
+        "duplicate",
+    ]
+    assert attempts[1]["rows_parsed"] == 0
+    assert attempts[1]["rows_imported"] == 0
+    assert attempts[1]["duplicate_path"] == summary.results[0].duplicate_path
+
+
+def test_import_inbox_does_not_skip_failed_only_duplicate_hash(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths)
+    paths.inbox.mkdir(parents=True, exist_ok=True)
+    inbox_file = paths.inbox / "bad.csv"
+    inbox_file.write_text("Date,Description\n06/10/2026,COFFEE SHOP\n", encoding="utf-8")
+
+    first = import_inbox(paths, account_id=account.account_id)
+    second = import_inbox(paths, account_id=account.account_id)
+
+    assert first.failed_files == 1
+    assert second.failed_files == 1
+    assert second.duplicate_files == 0
+    assert inbox_file.is_file()
+    assert list(paths.duplicates.rglob("*")) == []
+    with connect_database(paths) as conn:
+        statuses = [
+            row["import_status"]
+            for row in conn.execute(
+                "select import_status from import_attempts order by attempt_id"
+            )
+        ]
+
+    assert statuses == ["failed", "failed"]
 
 
 def test_import_inbox_leaves_unconfigured_pdf_account_in_place(
