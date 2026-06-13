@@ -13,6 +13,7 @@ from bankbuddy.imports import import_boa_pdf
 from bankbuddy.imports import normalize_account_number
 from bankbuddy.imports import parse_boa_csv
 from bankbuddy.imports import parse_boa_pdf_text
+from bankbuddy.imports import plan_boa_csv_import
 from bankbuddy.paths import resolve_app_paths
 
 
@@ -338,6 +339,61 @@ def test_import_boa_csv_skips_duplicate_transactions(tmp_path) -> None:
             ),
         }
     ]
+
+
+def test_plan_boa_csv_import_reports_would_import_without_writes(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_account(
+        paths,
+        bank_name="Bank of America",
+        country="US",
+        account_number="123456789",
+        account_type="checking",
+        currency="USD",
+    )
+    csv_path = write_boa_csv(tmp_path)
+
+    plan = plan_boa_csv_import(paths, csv_path, account_id=account.account_id)
+
+    assert plan.file_name == "boa.csv"
+    assert plan.bank_name == "Bank of America"
+    assert plan.account_id == account.account_id
+    assert plan.rows_parsed == 2
+    assert plan.rows_would_import == 2
+    assert plan.rows_already_present == 0
+    assert plan.processed_path == (
+        "processed/bank-of-america/2026/06/"
+        "bank-of-america_6789_2026-06-10_2026-06-11.csv"
+    )
+    with connect_database(paths) as conn:
+        assert conn.execute("select count(*) from transactions").fetchone()[0] == 0
+        assert conn.execute("select count(*) from import_files").fetchone()[0] == 0
+        assert conn.execute("select count(*) from import_attempts").fetchone()[0] == 0
+    assert not (paths.root / plan.processed_path).exists()
+
+
+def test_plan_boa_csv_import_reports_existing_transaction_duplicates(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_account(
+        paths,
+        bank_name="Bank of America",
+        country="US",
+        account_number="123456789",
+        account_type="checking",
+        currency="USD",
+    )
+    csv_path = write_boa_csv(tmp_path)
+    import_boa_csv(paths, csv_path, account_id=account.account_id)
+
+    plan = plan_boa_csv_import(paths, csv_path, account_id=account.account_id)
+
+    assert plan.rows_parsed == 2
+    assert plan.rows_would_import == 0
+    assert plan.rows_already_present == 2
+    with connect_database(paths) as conn:
+        assert conn.execute("select count(*) from transactions").fetchone()[0] == 2
+        assert conn.execute("select count(*) from import_files").fetchone()[0] == 1
+        assert conn.execute("select count(*) from import_attempts").fetchone()[0] == 1
 
 
 def test_import_boa_csv_requires_bank_of_america_usd_account(tmp_path) -> None:

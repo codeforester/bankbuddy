@@ -15,6 +15,7 @@ from bankbuddy.currency import parse_amount
 from bankbuddy.database import connect_database, initialize_database
 from bankbuddy.import_files import ImportFileMetadata
 from bankbuddy.import_files import archive_statement_file
+from bankbuddy.import_files import plan_statement_archive_file
 from bankbuddy.paths import AppPaths
 
 
@@ -44,6 +45,20 @@ class ImportSummary:
     rows_parsed: int
     rows_imported: int
     rows_skipped_duplicate: int
+
+
+@dataclass(frozen=True)
+class ImportPlan:
+    """Read-only import plan counts for dry-run summaries."""
+
+    file_name: str
+    bank_name: str
+    account_id: int
+    rows_parsed: int
+    rows_would_import: int
+    rows_already_present: int
+    canonical_file_name: str
+    processed_path: str
 
 
 @dataclass(frozen=True)
@@ -270,6 +285,156 @@ def import_boa_pdf(
         raise
 
 
+def plan_boa_csv_import(
+    paths: AppPaths,
+    csv_path: Path,
+    *,
+    account_id: int,
+    logger: logging.Logger | None = None,
+) -> ImportPlan:
+    """Plan a Bank of America CSV import without writing data or copying files."""
+
+    initialize_database(paths)
+    log_debug(logger, "source_format=boa_csv dry_run_parse_start file_name=%s", csv_path.name)
+    parsed_rows = parse_boa_csv(csv_path)
+    statement_start_date, statement_end_date = statement_period_from_rows(parsed_rows)
+    log_debug(
+        logger,
+        "source_format=boa_csv dry_run_parse_finished rows_parsed=%s",
+        len(parsed_rows),
+    )
+    return plan_boa_transactions(
+        paths,
+        csv_path,
+        account_id=account_id,
+        parsed_rows=parsed_rows,
+        source_format="boa_csv",
+        import_label="CSV",
+        require_pdf_account_match=False,
+        statement_start_date=statement_start_date,
+        statement_end_date=statement_end_date,
+        logger=logger,
+    )
+
+
+def plan_boa_pdf_import(
+    paths: AppPaths,
+    pdf_path: Path,
+    *,
+    account_id: int,
+    extracted_text: str | None = None,
+    logger: logging.Logger | None = None,
+) -> ImportPlan:
+    """Plan a Bank of America PDF import without writing data or copying files."""
+
+    initialize_database(paths)
+    log_debug(logger, "source_format=boa_pdf dry_run_parse_start file_name=%s", pdf_path.name)
+    text = extracted_text if extracted_text is not None else extract_pdf_text(pdf_path)
+    log_debug(logger, "source_format=boa_pdf dry_run_text_extracted characters=%s", len(text))
+    parsed_rows = parse_boa_pdf_text(text)
+    pdf_account_number = extract_boa_pdf_account_number(text)
+    statement_start_date, statement_end_date = extract_boa_pdf_statement_period(text)
+    log_debug(
+        logger,
+        "source_format=boa_pdf dry_run_account_suffix=%s rows_parsed=%s",
+        account_number_suffix(pdf_account_number),
+        len(parsed_rows),
+    )
+    return plan_boa_transactions(
+        paths,
+        pdf_path,
+        account_id=account_id,
+        parsed_rows=parsed_rows,
+        source_format="boa_pdf",
+        import_label="PDF",
+        require_pdf_account_match=True,
+        statement_start_date=statement_start_date,
+        statement_end_date=statement_end_date,
+        pdf_account_number=pdf_account_number,
+        logger=logger,
+    )
+
+
+def plan_boa_transactions(
+    paths: AppPaths,
+    import_path: Path,
+    *,
+    account_id: int,
+    parsed_rows: list[ParsedTransaction],
+    source_format: str,
+    import_label: str,
+    require_pdf_account_match: bool,
+    statement_start_date: str,
+    statement_end_date: str,
+    pdf_account_number: str | None = None,
+    logger: logging.Logger | None = None,
+) -> ImportPlan:
+    """Plan parsed Bank of America transactions without persisting changes."""
+
+    file_hash = hash_file(import_path)
+    log_debug(
+        logger,
+        "source_format=%s dry_run_plan_start file_name=%s account_id=%s rows_parsed=%s",
+        source_format,
+        import_path.name,
+        account_id,
+        len(parsed_rows),
+    )
+
+    with connect_database(paths) as conn:
+        account = find_import_account(conn, account_id)
+        if account is None:
+            raise ImportFailure(f"Account id {account_id} is not configured.")
+        configured_account_number = normalize_account_number(account["account_number"])
+        validate_boa_import_account(
+            account,
+            import_label=import_label,
+            source_format=source_format,
+            configured_account_number=configured_account_number,
+            require_pdf_account_match=require_pdf_account_match,
+            pdf_account_number=pdf_account_number,
+            logger=logger,
+        )
+        file_metadata = plan_statement_archive_file(
+            paths,
+            source_path=import_path,
+            bank_name=account["bank_name"],
+            account_ref=account_number_suffix(configured_account_number),
+            statement_start_date=statement_start_date,
+            statement_end_date=statement_end_date,
+            source_format=source_format,
+            file_hash=file_hash,
+        )
+        rows_already_present = count_duplicate_transaction_hashes(
+            conn,
+            account_id=account_id,
+            parsed_rows=parsed_rows,
+            source_format=source_format,
+        )
+
+    rows_would_import = len(parsed_rows) - rows_already_present
+    log_debug(
+        logger,
+        "source_format=%s dry_run_rows_parsed=%s rows_would_import=%s "
+        "rows_already_present=%s account_suffix=%s",
+        source_format,
+        len(parsed_rows),
+        rows_would_import,
+        rows_already_present,
+        account_number_suffix(configured_account_number),
+    )
+    return ImportPlan(
+        file_name=import_path.name,
+        bank_name="Bank of America",
+        account_id=account_id,
+        rows_parsed=len(parsed_rows),
+        rows_would_import=rows_would_import,
+        rows_already_present=rows_already_present,
+        canonical_file_name=file_metadata.canonical_file_name,
+        processed_path=file_metadata.processed_path,
+    )
+
+
 def import_boa_transactions(
     paths: AppPaths,
     import_path: Path,
@@ -301,40 +466,15 @@ def import_boa_transactions(
         if account is None:
             raise ImportFailure(f"Account id {account_id} is not configured.")
         configured_account_number = normalize_account_number(account["account_number"])
-        log_debug(
-            logger,
-            "source_format=%s import_account account_id=%s bank=%s currency=%s "
-            "account_suffix=%s",
-            source_format,
-            account_id,
-            account["bank_name"],
-            account["currency"],
-            account_number_suffix(configured_account_number),
+        validate_boa_import_account(
+            account,
+            import_label=import_label,
+            source_format=source_format,
+            configured_account_number=configured_account_number,
+            require_pdf_account_match=require_pdf_account_match,
+            pdf_account_number=pdf_account_number,
+            logger=logger,
         )
-        if account["bank_name"] != "Bank of America" or account["currency"] != "USD":
-            raise ImportFailure(
-                f"Bank of America {import_label} import requires a "
-                "Bank of America USD account."
-            )
-        if require_pdf_account_match:
-            if pdf_account_number != configured_account_number:
-                log_debug(
-                    logger,
-                    "source_format=%s account_mismatch configured_suffix=%s "
-                    "statement_suffix=%s",
-                    source_format,
-                    account_number_suffix(configured_account_number),
-                    account_number_suffix(pdf_account_number),
-                )
-                raise ImportFailure(
-                    "Bank of America PDF account number does not match configured account."
-                )
-            log_debug(
-                logger,
-                "source_format=%s account_match account_suffix=%s",
-                source_format,
-                account_number_suffix(configured_account_number),
-            )
 
         bank_id = int(account["bank_id"])
         category_id = uncategorized_category_id(conn)
@@ -449,6 +589,86 @@ def import_boa_transactions(
         rows_imported=rows_imported,
         rows_skipped_duplicate=rows_skipped_duplicate,
     )
+
+
+def validate_boa_import_account(
+    account: sqlite3.Row,
+    *,
+    import_label: str,
+    source_format: str,
+    configured_account_number: str,
+    require_pdf_account_match: bool,
+    pdf_account_number: str | None,
+    logger: logging.Logger | None,
+) -> None:
+    """Validate account metadata for Bank of America import paths."""
+
+    log_debug(
+        logger,
+        "source_format=%s import_account account_id=%s bank=%s currency=%s "
+        "account_suffix=%s",
+        source_format,
+        account["account_id"],
+        account["bank_name"],
+        account["currency"],
+        account_number_suffix(configured_account_number),
+    )
+    if account["bank_name"] != "Bank of America" or account["currency"] != "USD":
+        raise ImportFailure(
+            f"Bank of America {import_label} import requires a "
+            "Bank of America USD account."
+        )
+    if require_pdf_account_match:
+        if pdf_account_number != configured_account_number:
+            log_debug(
+                logger,
+                "source_format=%s account_mismatch configured_suffix=%s "
+                "statement_suffix=%s",
+                source_format,
+                account_number_suffix(configured_account_number),
+                account_number_suffix(pdf_account_number),
+            )
+            raise ImportFailure(
+                "Bank of America PDF account number does not match configured account."
+            )
+        log_debug(
+            logger,
+            "source_format=%s account_match account_suffix=%s",
+            source_format,
+            account_number_suffix(configured_account_number),
+        )
+
+
+def count_duplicate_transaction_hashes(
+    conn: sqlite3.Connection,
+    *,
+    account_id: int,
+    parsed_rows: list[ParsedTransaction],
+    source_format: str,
+) -> int:
+    """Return rows that would violate the account/hash uniqueness constraint."""
+
+    duplicates = 0
+    planned_hashes: set[str] = set()
+    for parsed in parsed_rows:
+        parsed_hash = transaction_hash(parsed, source_format=source_format)
+        if parsed_hash in planned_hashes:
+            duplicates += 1
+            continue
+        row = conn.execute(
+            """
+            select 1
+            from transactions
+            where account_id = ?
+              and transaction_hash = ?
+            """,
+            (account_id, parsed_hash),
+        ).fetchone()
+        if row is not None:
+            duplicates += 1
+        else:
+            planned_hashes.add(parsed_hash)
+    return duplicates
 
 
 def extract_pdf_text(pdf_path: Path) -> str:

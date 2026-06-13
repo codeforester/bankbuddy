@@ -95,6 +95,36 @@ def archive_statement_file(
 ) -> ImportFileMetadata:
     """Copy an imported statement into BankBuddy-managed processed storage."""
 
+    metadata = plan_statement_archive_file(
+        paths,
+        source_path=source_path,
+        bank_name=bank_name,
+        account_ref=account_ref,
+        statement_start_date=statement_start_date,
+        statement_end_date=statement_end_date,
+        source_format=source_format,
+        file_hash=file_hash,
+    )
+    destination = paths.root / metadata.processed_path
+    if not destination.exists():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        copy2(source_path, destination)
+    return metadata
+
+
+def plan_statement_archive_file(
+    paths: AppPaths,
+    *,
+    source_path: Path,
+    bank_name: str,
+    account_ref: str,
+    statement_start_date: str,
+    statement_end_date: str,
+    source_format: str,
+    file_hash: str,
+) -> ImportFileMetadata:
+    """Return processed statement metadata without copying the source file."""
+
     canonical_file_name = canonical_statement_filename(
         bank_name=bank_name,
         account_ref=account_ref,
@@ -120,10 +150,6 @@ def archive_statement_file(
         )
         destination = paths.root / relative_path
 
-    if not destination.exists():
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        copy2(source_path, destination)
-
     return ImportFileMetadata(
         original_file_name=source_path.name,
         canonical_file_name=canonical_file_name,
@@ -146,6 +172,27 @@ def archive_duplicate_statement_file(
 ) -> str:
     """Copy an exact duplicate statement into managed duplicate storage."""
 
+    duplicate_path = plan_duplicate_statement_path(
+        paths,
+        bank_name=bank_name,
+        statement_end_date=statement_end_date,
+        canonical_file_name=canonical_file_name,
+    )
+    destination = paths.root / duplicate_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    copy2(source_path, destination)
+    return duplicate_path
+
+
+def plan_duplicate_statement_path(
+    paths: AppPaths,
+    *,
+    bank_name: str,
+    statement_end_date: str,
+    canonical_file_name: str,
+) -> str:
+    """Return a duplicate archive path without copying the source file."""
+
     relative_path = duplicate_archive_relative_path(
         bank_name=bank_name,
         statement_end_date=statement_end_date,
@@ -167,8 +214,6 @@ def archive_duplicate_statement_file(
                 break
             duplicate_number += 1
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    copy2(source_path, destination)
     return relative_path.as_posix()
 
 

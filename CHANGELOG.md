@@ -9,6 +9,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy import --dry-run` for explicit file and inbox imports,
+  previewing parser results, duplicate decisions, and canonical archive paths
+  without writing database rows or moving statement files.
 - Added exact duplicate inbox import detection using SHA-256 file hashes, with
   duplicate attempts recorded in history and duplicate source files preserved
   under the managed `duplicates/` directory.

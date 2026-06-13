@@ -20,9 +20,12 @@ from bankbuddy.import_retry import RetryFailure
 from bankbuddy.import_retry import retry_import_attempt
 from bankbuddy.inbox import import_inbox
 from bankbuddy.imports import ImportFailure
+from bankbuddy.imports import ImportPlan
 from bankbuddy.imports import ImportSummary
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
+from bankbuddy.imports import plan_boa_csv_import
+from bankbuddy.imports import plan_boa_pdf_import
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.reports import spending_report
 from bankbuddy.runtime import CliRuntime
@@ -366,11 +369,17 @@ def export_sqlite_command(
     help="Statement file to import.",
 )
 @click.option("--account-id", type=int, help="Configured account id.")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview import actions without changing the database or files.",
+)
 @click.pass_context
 def import_command(
     ctx: click.Context,
     file_path: Path | None,
     account_id: int | None,
+    dry_run: bool,
 ) -> None:
     """Import statements or inspect import history."""
 
@@ -379,7 +388,7 @@ def import_command(
     if file_path is None or account_id is None:
         raise click.ClickException("Import requires --file and --account-id.")
 
-    run_statement_import(ctx, file_path, account_id)
+    run_statement_import(ctx, file_path, account_id, dry_run=dry_run)
 
 
 @import_command.command("history")
@@ -483,22 +492,48 @@ def import_retry_command(
     type=int,
     help="Configured account id. Required for CSV files; optional for routable PDFs.",
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview inbox import actions without changing the database or files.",
+)
 @click.pass_context
-def import_inbox_command(ctx: click.Context, account_id: int | None) -> None:
+def import_inbox_command(
+    ctx: click.Context,
+    account_id: int | None,
+    dry_run: bool,
+) -> None:
     """Import supported files from the managed inbox."""
 
     runtime = runtime_from_context(ctx)
     paths = resolve_app_paths(environment=runtime.environment)
-    summary = import_inbox(paths, account_id=account_id, logger=runtime.log)
+    dry_run = dry_run or import_dry_run_from_context(ctx)
+    summary = import_inbox(
+        paths,
+        account_id=account_id,
+        dry_run=dry_run,
+        logger=runtime.log,
+    )
     runtime.log.debug(
-        "import_inbox files=%s successful=%s failed=%s unsupported=%s",
+        "import_inbox files=%s successful=%s failed=%s unsupported=%s dry_run=%s",
         summary.total_files,
         summary.successful_files,
         summary.failed_files,
         summary.unsupported_files,
+        dry_run,
     )
     if summary.total_files == 0:
         click.echo("No inbox files found.")
+        return
+
+    if dry_run:
+        click.echo("Dry run: yes")
+        click.echo(f"Inbox files: {summary.total_files}")
+        click.echo(f"Planned imports: {summary.successful_files}")
+        click.echo(f"Planned duplicates: {summary.duplicate_files}")
+        click.echo(f"Failed: {summary.failed_files}")
+        click.echo(f"Unsupported: {summary.unsupported_files}")
+        print_inbox_results(summary.results, dry_run=True)
         return
 
     click.echo(f"Inbox files: {summary.total_files}")
@@ -506,48 +541,58 @@ def import_inbox_command(ctx: click.Context, account_id: int | None) -> None:
     click.echo(f"Duplicates: {summary.duplicate_files}")
     click.echo(f"Failed: {summary.failed_files}")
     click.echo(f"Unsupported: {summary.unsupported_files}")
-    for result in summary.results:
-        if result.status == "success":
-            click.echo(
-                f"success  {result.file_name}  parsed={result.rows_parsed} "
-                f"imported={result.rows_imported} "
-                f"duplicates={result.rows_skipped_duplicate}"
-            )
-        elif result.status == "duplicate":
-            click.echo(
-                f"duplicate  {result.file_name}  preserved={result.duplicate_path}  "
-                f"canonical={result.processed_path}"
-            )
-        else:
-            click.echo(f"{result.status}  {result.file_name}  {result.message}")
+    print_inbox_results(summary.results, dry_run=False)
 
 
-def run_statement_import(ctx: click.Context, file_path: Path, account_id: int) -> None:
+def run_statement_import(
+    ctx: click.Context,
+    file_path: Path,
+    account_id: int,
+    *,
+    dry_run: bool = False,
+) -> None:
     """Import an explicit statement file."""
 
     runtime = runtime_from_context(ctx)
     paths = resolve_app_paths(environment=runtime.environment)
     runtime.log.debug(
-        "import_requested file_name=%s suffix=%s account_id=%s",
+        "import_requested file_name=%s suffix=%s account_id=%s dry_run=%s",
         file_path.name,
         file_path.suffix.lower() or "(none)",
         account_id,
+        dry_run,
     )
     try:
         if file_path.suffix.lower() == ".csv":
-            summary = import_boa_csv(
-                paths,
-                file_path,
-                account_id=account_id,
-                logger=runtime.log,
-            )
+            if dry_run:
+                plan = plan_boa_csv_import(
+                    paths,
+                    file_path,
+                    account_id=account_id,
+                    logger=runtime.log,
+                )
+            else:
+                summary = import_boa_csv(
+                    paths,
+                    file_path,
+                    account_id=account_id,
+                    logger=runtime.log,
+                )
         elif file_path.suffix.lower() == ".pdf":
-            summary = import_boa_pdf(
-                paths,
-                file_path,
-                account_id=account_id,
-                logger=runtime.log,
-            )
+            if dry_run:
+                plan = plan_boa_pdf_import(
+                    paths,
+                    file_path,
+                    account_id=account_id,
+                    logger=runtime.log,
+                )
+            else:
+                summary = import_boa_pdf(
+                    paths,
+                    file_path,
+                    account_id=account_id,
+                    logger=runtime.log,
+                )
         else:
             raise ImportFailure(
                 f"Unsupported import file type: {file_path.suffix or '(none)'}"
@@ -555,6 +600,18 @@ def run_statement_import(ctx: click.Context, file_path: Path, account_id: int) -
     except ImportFailure as exc:
         runtime.log.debug("import_failed reason=%s", exc)
         raise click.ClickException(str(exc)) from exc
+
+    if dry_run:
+        runtime.log.debug(
+            "import_dry_run_finished file_name=%s rows_parsed=%s "
+            "rows_would_import=%s rows_already_present=%s",
+            plan.file_name,
+            plan.rows_parsed,
+            plan.rows_would_import,
+            plan.rows_already_present,
+        )
+        print_import_plan(plan)
+        return
 
     runtime.log.debug(
         "import_finished file_name=%s rows_parsed=%s rows_imported=%s "
@@ -567,6 +624,40 @@ def run_statement_import(ctx: click.Context, file_path: Path, account_id: int) -
     print_import_summary(summary)
 
 
+def print_inbox_results(results, *, dry_run: bool) -> None:
+    """Print per-file inbox results."""
+
+    for result in results:
+        if result.status == "success":
+            if dry_run:
+                click.echo(
+                    f"would-import  {result.file_name}  parsed={result.rows_parsed} "
+                    f"would-import={result.rows_imported} "
+                    f"duplicates={result.rows_skipped_duplicate}  "
+                    f"canonical={result.processed_path}"
+                )
+            else:
+                click.echo(
+                    f"success  {result.file_name}  parsed={result.rows_parsed} "
+                    f"imported={result.rows_imported} "
+                    f"duplicates={result.rows_skipped_duplicate}"
+                )
+        elif result.status == "duplicate":
+            if dry_run:
+                click.echo(
+                    f"would-skip-duplicate  {result.file_name}  "
+                    f"preserved={result.duplicate_path}  "
+                    f"canonical={result.processed_path}"
+                )
+            else:
+                click.echo(
+                    f"duplicate  {result.file_name}  preserved={result.duplicate_path}  "
+                    f"canonical={result.processed_path}"
+                )
+        else:
+            click.echo(f"{result.status}  {result.file_name}  {result.message}")
+
+
 def print_import_summary(summary: ImportSummary) -> None:
     """Print the standard import summary."""
 
@@ -575,6 +666,32 @@ def print_import_summary(summary: ImportSummary) -> None:
     click.echo(f"Rows parsed: {summary.rows_parsed}")
     click.echo(f"Rows imported: {summary.rows_imported}")
     click.echo(f"Duplicate rows skipped: {summary.rows_skipped_duplicate}")
+
+
+def print_import_plan(plan: ImportPlan) -> None:
+    """Print the standard dry-run import plan."""
+
+    click.echo("Dry run: yes")
+    click.echo(f"File: {plan.file_name}")
+    click.echo(f"Bank: {plan.bank_name} | Account ID: {plan.account_id}")
+    click.echo(f"Rows parsed: {plan.rows_parsed}")
+    click.echo(f"Rows that would be imported: {plan.rows_would_import}")
+    click.echo(f"Rows already present: {plan.rows_already_present}")
+    click.echo(f"Processed path: {plan.processed_path}")
+    click.echo("Database changed: no")
+    click.echo("Files changed: none")
+
+
+def import_dry_run_from_context(ctx: click.Context) -> bool:
+    """Return the parent import group's dry-run flag."""
+
+    current: click.Context | None = ctx
+    dry_run = False
+    while current is not None:
+        if "dry_run" in current.params:
+            dry_run = dry_run or bool(current.params["dry_run"])
+        current = current.parent
+    return dry_run
 
 
 def runtime_from_context(ctx: click.Context) -> CliRuntime:
