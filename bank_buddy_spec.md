@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.19
+**Version:** 1.20
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.20: Added `audit statements` for read-only imported statement coverage
+  checks. The audit supports `--years`, explicit `--from/--to` date ranges,
+  `--account-id`, and `--account-last4`, and reports missing gaps, overlaps,
+  duplicate periods, and covered periods.
 - v1.19: Added `tx list --bank`, `--currency`, `--account-number`, and
   `--account-last4` filters. Full account numbers may be used to filter rows,
   but list output remains display-name or masked-suffix based.
@@ -660,6 +664,33 @@ bankbuddy tx list --category CATEGORY
 bankbuddy tx list --uncategorized
 ```
 
+### Audit Commands
+
+```text
+bankbuddy audit statements
+bankbuddy audit statements --years YEAR[,YEAR...]
+bankbuddy audit statements --from DATE --to DATE
+bankbuddy audit statements --account-id ACCOUNT_ID
+bankbuddy audit statements --account-last4 LAST4
+```
+
+`audit statements` checks imported statement metadata and does not mutate
+database rows or statement files. It uses successful import attempts with a
+configured account and statement start/end dates. The first version reports
+`covered`, `missing`, `overlap`, and `duplicate` periods in human-readable
+pretty tables.
+
+`--years` and `--from/--to` are mutually exclusive. `--years 2024,2025`
+audits each requested calendar year as an independent window. `--from` and
+`--to` define one continuous inclusive date range and must be provided
+together. If no date selector is provided, the audit uses each selected
+account's imported coverage range.
+
+The initial account selectors are `--account-id` and `--account-last4`.
+`--account-last4` must resolve to exactly one configured account. Balance
+reconciliation and missing-transaction inference are out of scope until
+statement balances are parsed and stored.
+
 ### Reporting Commands
 
 ```text
@@ -838,6 +869,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - `import history`
 - `tx list` with account, bank, currency, date, debit/credit, sort, view,
   format, and summary controls
+- `audit statements` for imported statement coverage sanity checks
 - canonical import file names and managed archive copies for explicit imports
 - `report spending`
 - `export sqlite`

@@ -17,6 +17,9 @@ from bankbuddy.accounts import AccountAlreadyExistsError
 from bankbuddy.accounts import add_account
 from bankbuddy.accounts import list_accounts
 from bankbuddy.accounts import masked_account_number
+from bankbuddy.audit import AccountStatementAudit
+from bankbuddy.audit import audit_statement_coverage
+from bankbuddy.audit import AuditFilterError
 from bankbuddy.database import initialize_database
 from bankbuddy.exports import ExportFailure
 from bankbuddy.exports import export_sqlite_database
@@ -521,6 +524,23 @@ def format_pretty_row(
     return " | ".join(cells)
 
 
+def render_pretty_table(
+    headers: list[str],
+    rows: list[list[str]],
+    aligns: list[ColumnAlign],
+) -> None:
+    """Render an aligned pretty table from precomputed string rows."""
+
+    widths = [
+        max([len(header)] + [len(row[index]) for row in rows])
+        for index, header in enumerate(headers)
+    ]
+    click.echo(format_pretty_row(headers, widths, aligns))
+    click.echo("-+-".join("-" * width for width in widths))
+    for row in rows:
+        click.echo(format_pretty_row(row, widths, aligns))
+
+
 def render_delimited_rows(
     rows: list[TransactionRow],
     columns: list[TransactionColumn],
@@ -585,6 +605,113 @@ def validate_iso_date(value: str | None, option_name: str) -> str | None:
         raise click.ClickException(
             f"Invalid date for {option_name}: {value}. Expected YYYY-MM-DD."
         ) from exc
+
+
+@main.group()
+def audit() -> None:
+    """Audit imported data quality."""
+
+
+@audit.command("statements")
+@click.option("--account-id", type=int, help="Filter by configured account id.")
+@click.option("--account-last4", help="Filter by unambiguous account suffix.")
+@click.option("--years", help="Comma-separated calendar years to audit.")
+@click.option("--from", "date_from", help="Inclusive start date, YYYY-MM-DD.")
+@click.option("--to", "date_to", help="Inclusive end date, YYYY-MM-DD.")
+@click.pass_context
+def audit_statements(
+    ctx: click.Context,
+    account_id: int | None,
+    account_last4: str | None,
+    years: str | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> None:
+    """Audit imported statement coverage."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    normalized_date_from = validate_iso_date(date_from, "--from")
+    normalized_date_to = validate_iso_date(date_to, "--to")
+    try:
+        parsed_years = parse_audit_years(years)
+        audits = audit_statement_coverage(
+            paths,
+            account_id=account_id,
+            account_last4=account_last4,
+            years=parsed_years,
+            date_from=normalized_date_from,
+            date_to=normalized_date_to,
+        )
+    except AuditFilterError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug(
+        "audit_statements count=%s account_id=%s account_last4=%s years=%s "
+        "date_from=%s date_to=%s",
+        len(audits),
+        account_id,
+        account_number_suffix(account_last4),
+        parsed_years,
+        normalized_date_from,
+        normalized_date_to,
+    )
+    if not audits:
+        click.echo("No imported statements found.")
+        return
+
+    render_statement_audits(audits)
+
+
+def parse_audit_years(years: str | None) -> list[int] | None:
+    """Parse a comma-separated year selector."""
+
+    if years is None or not years.strip():
+        return None
+
+    parsed_years: list[int] = []
+    for raw_year in years.split(","):
+        year = raw_year.strip()
+        if len(year) != 4 or not year.isdigit():
+            raise AuditFilterError("Years must be four-digit values.")
+        parsed_years.append(int(year))
+    return parsed_years
+
+
+def render_statement_audits(audits: list[AccountStatementAudit]) -> None:
+    """Render statement coverage audit results."""
+
+    for index, audit_result in enumerate(audits):
+        if index:
+            click.echo("")
+        render_pretty_table(
+            ["Account", "Bank", "Window"],
+            [[
+                audit_result.account_display,
+                audit_result.bank_name,
+                (
+                    f"{audit_result.window_start.isoformat()} to "
+                    f"{audit_result.window_end.isoformat()}"
+                ),
+            ]],
+            ["left", "left", "left"],
+        )
+        click.echo("")
+        render_pretty_table(
+            ["Status", "Period", "File"],
+            [
+                [
+                    finding.status,
+                    (
+                        f"{finding.period_start.isoformat()} to "
+                        f"{finding.period_end.isoformat()}"
+                    ),
+                    finding.file_name or "-",
+                ]
+                for finding in audit_result.findings
+            ],
+            ["left", "left", "left"],
+        )
 
 
 @main.group()
