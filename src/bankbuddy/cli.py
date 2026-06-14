@@ -39,6 +39,11 @@ from bankbuddy.reports import spending_report
 from bankbuddy.runtime import CliRuntime
 from bankbuddy.runtime import RuntimeConfigError
 from bankbuddy.runtime import create_runtime
+from bankbuddy.statements import list_statement_files
+from bankbuddy.statements import StatementFilterError
+from bankbuddy.statements import StatementListRow
+from bankbuddy.statements import statement_summary
+from bankbuddy.statements import StatementSummaryRow
 from bankbuddy.transactions import format_minor_units
 from bankbuddy.transactions import list_transactions
 from bankbuddy.transactions import summarize_transactions
@@ -712,6 +717,186 @@ def render_statement_audits(audits: list[AccountStatementAudit]) -> None:
             ],
             ["left", "left", "left"],
         )
+
+
+@main.group()
+def statements() -> None:
+    """Inspect imported statement files."""
+
+
+@statements.command("summary")
+@click.option(
+    "--by",
+    "group_by",
+    type=click.Choice(["year", "month"], case_sensitive=False),
+    default="year",
+    show_default=True,
+    help="Group statement files by statement end year or month.",
+)
+@click.option("--bank", "bank_name", help="Filter by exact bank name.")
+@click.option("--account-id", type=int, help="Filter by configured account id.")
+@click.option("--account-last4", help="Filter by unambiguous account suffix.")
+@click.option("--years", help="Comma-separated statement end years.")
+@click.pass_context
+def statements_summary(
+    ctx: click.Context,
+    group_by: str,
+    bank_name: str | None,
+    account_id: int | None,
+    account_last4: str | None,
+    years: str | None,
+) -> None:
+    """Summarize imported statement files."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        parsed_years = parse_audit_years(years)
+        rows = statement_summary(
+            paths,
+            group_by=group_by.lower(),
+            bank_name=bank_name,
+            account_id=account_id,
+            account_last4=account_last4,
+            years=parsed_years,
+        )
+    except (AuditFilterError, StatementFilterError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug(
+        "statements_summary count=%s group_by=%s bank=%s account_id=%s "
+        "account_last4=%s years=%s",
+        len(rows),
+        group_by,
+        bank_name,
+        account_id,
+        account_number_suffix(account_last4),
+        parsed_years,
+    )
+    if not rows:
+        click.echo("No imported statements found.")
+        return
+
+    render_statement_summary(rows)
+
+
+@statements.command("list")
+@click.option("--bank", "bank_name", help="Filter by exact bank name.")
+@click.option("--account-id", type=int, help="Filter by configured account id.")
+@click.option("--account-last4", help="Filter by unambiguous account suffix.")
+@click.option(
+    "--year",
+    type=click.IntRange(min=1900, max=9999),
+    help="Filter by statement end year.",
+)
+@click.pass_context
+def statements_list(
+    ctx: click.Context,
+    bank_name: str | None,
+    account_id: int | None,
+    account_last4: str | None,
+    year: int | None,
+) -> None:
+    """List imported statement files."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        rows = list_statement_files(
+            paths,
+            bank_name=bank_name,
+            account_id=account_id,
+            account_last4=account_last4,
+            year=year,
+        )
+    except StatementFilterError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug(
+        "statements_list count=%s bank=%s account_id=%s account_last4=%s year=%s",
+        len(rows),
+        bank_name,
+        account_id,
+        account_number_suffix(account_last4),
+        year,
+    )
+    if not rows:
+        click.echo("No imported statements found.")
+        return
+
+    render_statement_list(rows)
+
+
+def render_statement_summary(rows: list[StatementSummaryRow]) -> None:
+    """Render grouped statement inventory rows."""
+
+    render_pretty_table(
+        [
+            "Bank",
+            "Account",
+            "Year",
+            "Month",
+            "Files",
+            "Period Start",
+            "Period End",
+            "Transactions",
+            "Duplicate Tx",
+        ],
+        [
+            [
+                row.bank_name,
+                row.account_display,
+                str(row.year),
+                f"{row.month:02d}" if row.month is not None else "-",
+                str(row.file_count),
+                row.period_start,
+                row.period_end,
+                str(row.rows_imported),
+                str(row.rows_skipped_duplicate),
+            ]
+            for row in rows
+        ],
+        [
+            "left",
+            "left",
+            "right",
+            "right",
+            "right",
+            "left",
+            "left",
+            "right",
+            "right",
+        ],
+    )
+
+
+def render_statement_list(rows: list[StatementListRow]) -> None:
+    """Render imported statement file rows."""
+
+    render_pretty_table(
+        [
+            "Bank",
+            "Account",
+            "Period",
+            "File",
+            "Imported",
+            "Transactions",
+            "Duplicate Tx",
+        ],
+        [
+            [
+                row.bank_name,
+                row.account_display,
+                row.period,
+                row.file_name,
+                row.imported_at or "-",
+                str(row.rows_imported),
+                str(row.rows_skipped_duplicate),
+            ]
+            for row in rows
+        ],
+        ["left", "left", "left", "left", "left", "right", "right"],
+    )
 
 
 @main.group()

@@ -17,6 +17,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy statements summary` and `bankbuddy statements list` for
+  read-only inventory views of imported statement files by bank, account, year,
+  and month.
 - Added `bankbuddy audit statements` for read-only statement coverage checks
   that report missing gaps, overlaps, duplicate periods, and covered periods
   across imported statement metadata.

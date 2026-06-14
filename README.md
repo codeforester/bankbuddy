@@ -41,6 +41,11 @@ bankbuddy import history --status failed
 bankbuddy import history --status success --limit 10
 bankbuddy import retry 1
 bankbuddy import retry 1 --account-id 1
+bankbuddy statements summary
+bankbuddy statements summary --by month --years 2024,2025
+bankbuddy statements summary --bank "Bank of America" --account-last4 1145
+bankbuddy statements list
+bankbuddy statements list --year 2025 --account-last4 1145
 bankbuddy tx list
 bankbuddy tx list --bank "Bank of America"
 bankbuddy tx list --currency USD
@@ -116,6 +121,13 @@ debug logs avoid full account numbers and raw statement contents.
 `--account-number`, `--account-last4`, date range, and debit/credit direction.
 Full account numbers are accepted for filtering, but transaction output keeps
 using display names or masked account suffixes.
+
+`bankbuddy statements summary` and `bankbuddy statements list` inspect imported
+statement-file inventory. `summary` groups successful statement files by
+statement end year by default, or by statement end month with `--by month`.
+Both commands are read-only, use successful imports with configured accounts
+and statement start/end dates, and can be filtered with `--bank`,
+`--account-id`, and `--account-last4`.
 
 `bankbuddy audit statements` checks imported statement-period metadata for
 missing gaps, overlapping periods, duplicate periods, and covered periods.
