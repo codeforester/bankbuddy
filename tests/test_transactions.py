@@ -8,6 +8,7 @@ from bankbuddy.imports import import_boa_csv
 from bankbuddy.paths import AppPaths
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.transactions import list_transactions
+from bankbuddy.transactions import categorize_transaction
 from bankbuddy.transactions import summarize_transactions
 from bankbuddy.transactions import TransactionFilterError
 from bankbuddy.transactions import TransactionRow
@@ -180,6 +181,58 @@ def test_list_transactions_filters_by_currency(tmp_path) -> None:
         "PAYROLL",
     ]
     assert missing_rows == []
+
+
+def test_categorize_transaction_updates_category(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    update = categorize_transaction(paths, transaction_id=1, category_name="Groceries")
+    rows = list_transactions(paths, category_name="Groceries")
+
+    assert update.transaction_id == 1
+    assert update.category_name == "Groceries"
+    assert [row.description for row in rows] == ["COFFEE SHOP"]
+    assert rows[0].category_name == "Groceries"
+
+
+def test_categorize_transaction_rejects_missing_transaction(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+
+    with pytest.raises(TransactionFilterError, match="Transaction not found: 999"):
+        categorize_transaction(paths, transaction_id=999, category_name="Groceries")
+
+
+def test_list_transactions_filters_by_category(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+    categorize_transaction(paths, transaction_id=1, category_name="Groceries")
+
+    groceries_rows = list_transactions(paths, category_name="groceries")
+    uncategorized_rows = list_transactions(paths, uncategorized=True)
+
+    assert [row.description for row in groceries_rows] == ["COFFEE SHOP"]
+    assert [row.description for row in uncategorized_rows] == ["PAYROLL"]
+
+
+def test_list_transactions_rejects_category_and_uncategorized_together(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+
+    with pytest.raises(
+        TransactionFilterError,
+        match="Use either --category or --uncategorized, not both",
+    ):
+        list_transactions(paths, category_name="Groceries", uncategorized=True)
 
 
 def test_list_transactions_filters_by_normalized_account_number(tmp_path) -> None:

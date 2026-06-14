@@ -8,6 +8,9 @@ from typing import Iterable
 from typing import Literal
 
 from bankbuddy.accounts import masked_account_number
+from bankbuddy.categories import CategoryError
+from bankbuddy.categories import UNCATEGORIZED_CATEGORY
+from bankbuddy.categories import find_category_by_name
 from bankbuddy.currency import normalize_currency
 from bankbuddy.database import connect_database, initialize_database
 from bankbuddy.paths import AppPaths
@@ -27,6 +30,7 @@ class TransactionRow:
     amount_minor_units: int
     currency: str
     description: str
+    category_name: str = UNCATEGORIZED_CATEGORY
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,14 @@ class TransactionSummary:
     net_minor_units: int
 
 
+@dataclass(frozen=True)
+class TransactionCategoryUpdate:
+    """The result of manually assigning a transaction category."""
+
+    transaction_id: int
+    category_name: str
+
+
 class TransactionSortError(ValueError):
     """Raised when a transaction sort expression cannot be parsed."""
 
@@ -67,6 +79,8 @@ def list_transactions(
     date_from: str | None = None,
     date_to: str | None = None,
     direction: Literal["debit", "credit"] | None = None,
+    category_name: str | None = None,
+    uncategorized: bool = False,
     sort: str | None = None,
     default_order: SortDirection = "asc",
 ) -> list[TransactionRow]:
@@ -113,6 +127,18 @@ def list_transactions(
         conditions.append("transactions.amount_minor_units < 0")
     elif direction == "credit":
         conditions.append("transactions.amount_minor_units > 0")
+    if category_name is not None and uncategorized:
+        raise TransactionFilterError(
+            "Use either --category or --uncategorized, not both."
+        )
+    if category_name is not None:
+        category_id = resolve_transaction_category_id(paths, category_name)
+        conditions.append("transactions.category_id = ?")
+        parameters.append(category_id)
+    elif uncategorized:
+        category_id = resolve_transaction_category_id(paths, UNCATEGORIZED_CATEGORY)
+        conditions.append("transactions.category_id = ?")
+        parameters.append(category_id)
 
     where_clause = f"where {' and '.join(conditions)}" if conditions else ""
     order_clause = build_order_clause(
@@ -128,11 +154,13 @@ def list_transactions(
                 transactions.amount_minor_units,
                 transactions.currency,
                 transactions.description,
+                categories.category_name,
                 accounts.account_number,
                 accounts.display_name
             from transactions
             join accounts using (account_id)
             join banks using (bank_id)
+            join categories using (category_id)
             {where_clause}
             {order_clause}
             """,
@@ -149,9 +177,60 @@ def list_transactions(
             amount_minor_units=int(row["amount_minor_units"]),
             currency=row["currency"],
             description=row["description"],
+            category_name=row["category_name"],
         )
         for row in rows
     ]
+
+
+def categorize_transaction(
+    paths: AppPaths,
+    *,
+    transaction_id: int,
+    category_name: str,
+) -> TransactionCategoryUpdate:
+    """Assign one transaction to an existing category."""
+
+    initialize_database(paths)
+    with connect_database(paths) as conn:
+        transaction_row = conn.execute(
+            "select transaction_id from transactions where transaction_id = ?",
+            (transaction_id,),
+        ).fetchone()
+        if transaction_row is None:
+            raise TransactionFilterError(f"Transaction not found: {transaction_id}")
+
+        category = find_category_by_name(conn, category_name)
+        if category is None:
+            raise TransactionFilterError(f"Category not found: {category_name}")
+
+        conn.execute(
+            """
+            update transactions
+            set category_id = ?,
+                updated_at = current_timestamp
+            where transaction_id = ?
+            """,
+            (category.category_id, transaction_id),
+        )
+        conn.commit()
+    return TransactionCategoryUpdate(
+        transaction_id=transaction_id,
+        category_name=category.category_name,
+    )
+
+
+def resolve_transaction_category_id(paths: AppPaths, category_name: str) -> int:
+    """Resolve a transaction filter category to a category id."""
+
+    with connect_database(paths) as conn:
+        try:
+            category = find_category_by_name(conn, category_name)
+        except CategoryError as exc:
+            raise TransactionFilterError(str(exc)) from exc
+    if category is None:
+        raise TransactionFilterError(f"Category not found: {category_name}")
+    return category.category_id
 
 
 def account_ids_for_number(paths: AppPaths, account_number: str) -> list[int]:
