@@ -1,11 +1,16 @@
 from pathlib import Path
 
+import pytest
+
 from bankbuddy.accounts import add_account
 from bankbuddy.accounts import Account
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.paths import AppPaths
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.transactions import list_transactions
+from bankbuddy.transactions import summarize_transactions
+from bankbuddy.transactions import TransactionRow
+from bankbuddy.transactions import TransactionSortError
 
 
 BOA_CSV = """Date,Description,Amount,Running Bal.
@@ -136,6 +141,103 @@ def test_list_transactions_direction_composes_with_account_and_dates(tmp_path) -
     assert len(rows) == 1
     assert rows[0].description == "COFFEE SHOP"
     assert rows[0].account_id == first_account.account_id
+
+
+def test_list_transactions_sorts_by_field_directions(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    rows = list_transactions(paths, sort="amount:desc,date")
+
+    assert [row.description for row in rows] == ["PAYROLL", "COFFEE SHOP"]
+
+
+def test_list_transactions_applies_default_sort_order(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    rows = list_transactions(paths, sort="date", default_order="desc")
+
+    assert [row.description for row in rows] == ["PAYROLL", "COFFEE SHOP"]
+
+
+def test_list_transactions_rejects_unknown_sort_fields(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    with pytest.raises(TransactionSortError, match="Unsupported sort field"):
+        list_transactions(paths, sort="posted_at")
+
+
+def test_list_transactions_rejects_unknown_sort_directions(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    with pytest.raises(TransactionSortError, match="Unsupported sort direction"):
+        list_transactions(paths, sort="amount:newest")
+
+
+def test_summarize_transactions_groups_by_currency() -> None:
+    rows = [
+        TransactionRow(1, 1, "2026-06-10", "Checking", -425, "USD", "COFFEE"),
+        TransactionRow(2, 1, "2026-06-11", "Checking", 250000, "USD", "PAYROLL"),
+        TransactionRow(3, 2, "2026-06-12", "Savings", -999, "INR", "TEA"),
+    ]
+
+    summaries = summarize_transactions(rows)
+
+    assert [
+        (
+            row.currency,
+            row.transaction_count,
+            row.debit_minor_units,
+            row.credit_minor_units,
+            row.net_minor_units,
+        )
+        for row in summaries
+    ] == [
+        ("INR", 1, -999, 0, -999),
+        ("USD", 2, -425, 250000, 249575),
+    ]
+
+
+def test_summarize_transactions_respects_filtered_rows(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    summaries = summarize_transactions(list_transactions(paths, direction="debit"))
+
+    assert len(summaries) == 1
+    assert summaries[0].currency == "USD"
+    assert summaries[0].transaction_count == 1
+    assert summaries[0].debit_minor_units == -425
+    assert summaries[0].credit_minor_units == 0
+    assert summaries[0].net_minor_units == -425
 
 
 def test_list_transactions_uses_masked_account_when_display_name_is_missing(tmp_path) -> None:

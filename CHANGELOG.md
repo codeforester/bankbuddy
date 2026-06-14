@@ -14,6 +14,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy tx list --sort`, `--order`, `--view`, and `--summary`
+  options for ordering transactions, switching human-readable list views, and
+  printing per-currency totals for the filtered result set.
 - Added `bankbuddy tx list --direction debit|credit` for filtering outgoing
   negative-amount transactions or incoming positive-amount transactions.
 - Added `bankbuddy import --dry-run` for explicit file and inbox imports,

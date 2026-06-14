@@ -16,7 +16,7 @@
 - Modify: `src/bankbuddy/transactions.py`
 - Test: `tests/test_transactions.py`
 
-- [ ] **Step 1: Write failing tests for sort parsing and query ordering**
+- [x] **Step 1: Write failing tests for sort parsing and query ordering**
 
 Add tests that call `list_transactions(paths, sort=...)` and assert:
 
@@ -32,13 +32,13 @@ with pytest.raises(TransactionSortError, match="Unsupported sort field"):
     list_transactions(paths, sort="posted_at")
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `uv run pytest tests/test_transactions.py -q`
 
 Expected: failures because `list_transactions` does not accept `sort` and `TransactionSortError` does not exist.
 
-- [ ] **Step 3: Implement minimal sort support**
+- [x] **Step 3: Implement minimal sort support**
 
 Add:
 
@@ -56,7 +56,7 @@ class TransactionSortError(ValueError):
 
 Add a parser that accepts comma-separated fields with optional `:asc` / `:desc`, applies `default_order`, rejects unknown fields, and appends `id:asc` as a tie-breaker unless `id` is already present.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run: `uv run pytest tests/test_transactions.py -q`
 
@@ -68,7 +68,7 @@ Expected: transaction tests pass.
 - Modify: `src/bankbuddy/transactions.py`
 - Test: `tests/test_transactions.py`
 
-- [ ] **Step 1: Write failing tests for per-currency summaries**
+- [x] **Step 1: Write failing tests for per-currency summaries**
 
 Add tests for:
 
@@ -82,13 +82,13 @@ assert summary["USD"].net_minor_units == 249575
 
 Also assert filtered debit rows summarize to one debit and zero credits.
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `uv run pytest tests/test_transactions.py -q`
 
 Expected: failure because `summarize_transactions` does not exist.
 
-- [ ] **Step 3: Implement summary helper**
+- [x] **Step 3: Implement summary helper**
 
 Add a frozen dataclass:
 
@@ -104,7 +104,7 @@ class TransactionSummary:
 
 Add `summarize_transactions(rows: Iterable[TransactionRow]) -> list[TransactionSummary]` that groups by currency and returns summaries sorted by currency.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run: `uv run pytest tests/test_transactions.py -q`
 
@@ -116,7 +116,7 @@ Expected: transaction tests pass.
 - Modify: `src/bankbuddy/cli.py`
 - Test: `tests/test_tx_cli.py`
 
-- [ ] **Step 1: Write failing CLI tests**
+- [x] **Step 1: Write failing CLI tests**
 
 Add tests for:
 
@@ -148,13 +148,13 @@ assert "debit" in result.output
 assert "credit" in result.output
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `uv run pytest tests/test_tx_cli.py -q`
 
 Expected: failures because `--sort`, `--order`, and `--view` are unknown.
 
-- [ ] **Step 3: Implement CLI wiring and output views**
+- [x] **Step 3: Implement CLI wiring and output views**
 
 Add Click options:
 
@@ -166,7 +166,7 @@ Add Click options:
 
 Pass sort arguments to `list_transactions`. Catch `TransactionSortError` and raise `click.ClickException`. Extract small rendering helpers for the three views.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run: `uv run pytest tests/test_tx_cli.py -q`
 
@@ -181,7 +181,7 @@ Expected: transaction CLI tests pass.
 - Modify: `bank_buddy_spec.md`
 - Test: `tests/test_tx_cli.py`
 
-- [ ] **Step 1: Write failing summary CLI tests**
+- [x] **Step 1: Write failing summary CLI tests**
 
 Add tests for:
 
@@ -199,17 +199,17 @@ result = runner.invoke(main, ["tx", "list", "--direction", "debit", "--summary"]
 assert "USD  1  -4.25  0.00  -4.25" in result.output
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `uv run pytest tests/test_tx_cli.py -q`
 
 Expected: failure because `--summary` is unknown.
 
-- [ ] **Step 3: Implement summary output and docs**
+- [x] **Step 3: Implement summary output and docs**
 
 Add `--summary` as a boolean Click option. Render summary after the transaction rows when rows exist. If no rows match, keep `No transactions found.` and do not print an empty summary. Update examples in README and `bank_buddy_spec.md`; add a CHANGELOG entry.
 
-- [ ] **Step 4: Verify feature and full suite**
+- [x] **Step 4: Verify feature and full suite**
 
 Run:
 

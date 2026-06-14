@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.16
+**Version:** 1.17
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.17: Added `tx list --sort`, `--order`, `--view`, and `--summary` so
+  transaction review can order rows, switch human-readable layouts, and print
+  per-currency totals for the filtered result set.
 - v1.16: Added `tx list --direction debit|credit` so transaction review can
   focus on outgoing negative amounts or incoming positive amounts.
 - v1.15: Extended Bank of America PDF statement-period extraction to support
@@ -597,12 +600,27 @@ bankbuddy tx list --account-id ACCOUNT_ID
 bankbuddy tx list --from DATE --to DATE
 bankbuddy tx list --direction debit
 bankbuddy tx list --direction credit
+bankbuddy tx list --sort FIELD[:asc|desc],FIELD[:asc|desc]
+bankbuddy tx list --sort FIELD --order asc|desc
+bankbuddy tx list --view default|compact|ledger
+bankbuddy tx list --summary
 bankbuddy tx categorize TX_ID CATEGORY
 ```
 
 `tx list --direction debit` shows negative-amount transactions. `tx list
 --direction credit` shows positive-amount transactions. The direction filter
 can be combined with account and date filters.
+
+`tx list --sort` accepts comma-separated public fields: `id`, `date`, `amount`,
+`account`, `currency`, and `description`. Field-level directions such as
+`amount:desc` override the global `--order`; otherwise `--order` applies to
+fields without an explicit direction. The default order remains
+`date:asc,id:asc` when no sort expression is provided.
+
+`tx list --view default` keeps the standard transaction table, `--view compact`
+shows a narrower date/amount/currency/description table, and `--view ledger`
+adds a debit/credit type column. `tx list --summary` prints transaction count,
+debits, credits, and net totals grouped by currency for the same filtered rows.
 
 Later transaction commands and filters:
 
