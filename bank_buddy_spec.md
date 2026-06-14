@@ -292,7 +292,7 @@ integer minor units, never floating-point values.
 |---|---|---|
 | `bank_id` | INTEGER PK | Surrogate key |
 | `bank_name` | TEXT NOT NULL UNIQUE | e.g. "Bank of America" |
-| `country` | TEXT NOT NULL | e.g. "US", "India" |
+| `country` | TEXT NOT NULL | ISO 3166-1 alpha-2 code, e.g. "US", "IN" |
 | `default_currency` | TEXT NOT NULL | ISO code, e.g. "USD" |
 | `created_at` | DATETIME NOT NULL | |
 | `updated_at` | DATETIME NOT NULL | |
@@ -310,7 +310,7 @@ is needed.
 | `account_number` | TEXT NOT NULL | Actual account number, not masked |
 | `account_type` | TEXT NOT NULL | "checking", "savings", "cd", "credit_card", "investment" |
 | `currency` | TEXT NOT NULL | ISO code |
-| `statement_account_ref` | TEXT | Optional parser-visible reference such as masked number or last four |
+| `statement_account_ref` | TEXT | Advanced parser-visible alias for statement formats that expose only a masked account reference |
 | `display_name` | TEXT | Optional user-friendly account label |
 | `latest_balance_minor_units` | INTEGER | Latest statement-derived account balance snapshot |
 | `latest_balance_currency` | TEXT | ISO code for the latest balance |
@@ -326,9 +326,11 @@ reliable signal. If account type cannot be inferred, the command should allow a
 clear user override rather than silently guessing.
 
 Bank Buddy stores the actual account number so account identity is unambiguous.
-If a statement exposes only a masked number or last-four value, the import flow
-must map that parser-visible value to a configured account rather than storing
-the masked value as the account number.
+Country values are stored as normalized ISO 3166-1 alpha-2 codes such as `US`
+and `IN`; the CLI may accept friendly aliases such as `USA` or `India`, but it
+must normalize before persistence. If a statement exposes only a masked number
+or last-four value, the import flow must map that parser-visible value to a
+configured account rather than storing the masked value as the account number.
 
 The latest balance fields are a convenience snapshot, not a complete balance
 history and not a live bank balance. They are updated only from successful

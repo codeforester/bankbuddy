@@ -171,6 +171,118 @@ def test_account_add_creates_bank_and_account(tmp_path) -> None:
     }
 
 
+def test_account_add_normalizes_country_alias(tmp_path) -> None:
+    result = CliRunner().invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "ICICI Bank",
+            "--country",
+            "India",
+            "--account-number",
+            "123456789",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+        ],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0
+
+    paths = resolve_app_paths(tmp_path)
+    with connect_database(paths) as conn:
+        country = conn.execute("select country from banks").fetchone()["country"]
+
+    assert country == "IN"
+
+
+def test_account_add_rejects_unknown_country(tmp_path) -> None:
+    result = CliRunner().invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Unknown Bank",
+            "--country",
+            "Atlantis",
+            "--account-number",
+            "123456789",
+            "--type",
+            "savings",
+            "--currency",
+            "USD",
+        ],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 1
+    assert "Unsupported country" in result.output
+
+
+def test_account_add_rejects_existing_bank_country_mismatch(tmp_path) -> None:
+    runner = CliRunner()
+    first = runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Example Bank",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+    second = runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Example Bank",
+            "--country",
+            "IN",
+            "--account-number",
+            "987654321",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+        ],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert first.exit_code == 0
+    assert second.exit_code == 1
+    assert "already configured for country US" in second.output
+
+    paths = resolve_app_paths(tmp_path)
+    with connect_database(paths) as conn:
+        country = conn.execute("select country from banks").fetchone()["country"]
+
+    assert country == "US"
+
+
+def test_account_add_help_hides_statement_ref_from_normal_usage() -> None:
+    result = CliRunner().invoke(main, ["account", "add", "--help"])
+
+    assert result.exit_code == 0
+    assert "--country TEXT" in result.output
+    assert "ISO 3166-1 alpha-2 country code" in result.output
+    assert "--statement-ref" not in result.output
+
+
 def test_account_add_rejects_duplicate_bank_account(tmp_path) -> None:
     runner = CliRunner()
     args = [
