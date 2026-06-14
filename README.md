@@ -31,7 +31,7 @@ bankbuddy account add \
   --currency USD
 bankbuddy account add \
   --bank "ICICI Bank" \
-  --country India \
+  --country IN \
   --account-number "<actual-number>" \
   --type savings \
   --currency INR

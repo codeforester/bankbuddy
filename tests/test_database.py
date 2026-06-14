@@ -2,7 +2,14 @@ import sqlite3
 
 import pytest
 
-from bankbuddy.database import Migration, apply_migrations, connect_database, initialize_database
+from bankbuddy.database import (
+    Migration,
+    SCHEMA_MIGRATIONS_SQL,
+    apply_migrations,
+    connect_database,
+    initialize_database,
+    iter_migrations,
+)
 from bankbuddy.paths import resolve_app_paths
 
 
@@ -66,6 +73,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "0003_import_attempt_account",
         "0004_duplicate_import_attempts",
         "0005_account_balances_and_value_dates",
+        "0006_normalize_bank_country_codes",
     ]
     assert categories == {
         "Dining": "expense",
@@ -98,7 +106,7 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
         ).fetchone()[0]
         category_count = conn.execute("select count(*) from categories").fetchone()[0]
 
-    assert migration_count == 5
+    assert migration_count == 6
     assert category_count == 15
 
 
@@ -213,7 +221,46 @@ def test_schema_tracks_value_date_and_latest_account_balance(tmp_path) -> None:
         "0003_import_attempt_account",
         "0004_duplicate_import_attempts",
         "0005_account_balances_and_value_dates",
+        "0006_normalize_bank_country_codes",
     ]
+
+
+def test_country_code_migration_normalizes_legacy_bank_values(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path)
+
+    with connect_database(paths) as conn:
+        conn.execute(SCHEMA_MIGRATIONS_SQL)
+        for migration in iter_migrations():
+            if migration.version == "0006_normalize_bank_country_codes":
+                continue
+            conn.executescript(migration.sql)
+            conn.execute(
+                "insert into schema_migrations (version) values (?)",
+                (migration.version,),
+            )
+        conn.execute(
+            "insert into banks (bank_name, country, default_currency) values (?, ?, ?)",
+            ("Legacy US Bank", "USA", "USD"),
+        )
+        conn.execute(
+            "insert into banks (bank_name, country, default_currency) values (?, ?, ?)",
+            ("Legacy India Bank", "India", "INR"),
+        )
+        conn.commit()
+
+        apply_migrations(conn)
+
+        countries = {
+            row["bank_name"]: row["country"]
+            for row in conn.execute(
+                "select bank_name, country from banks order by bank_name"
+            ).fetchall()
+        }
+
+    assert countries == {
+        "Legacy India Bank": "IN",
+        "Legacy US Bank": "US",
+    }
 
 
 def test_apply_migrations_rolls_back_failed_migration(tmp_path, monkeypatch) -> None:

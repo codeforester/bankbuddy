@@ -14,6 +14,7 @@ import click
 
 from bankbuddy import __version__
 from bankbuddy.accounts import AccountAlreadyExistsError
+from bankbuddy.accounts import CountryCodeError
 from bankbuddy.accounts import add_account
 from bankbuddy.accounts import list_accounts
 from bankbuddy.accounts import masked_account_number
@@ -169,7 +170,11 @@ def account() -> None:
 
 @account.command("add")
 @click.option("--bank", "bank_name", required=True, help="Bank name.")
-@click.option("--country", required=True, help="Bank country code or name.")
+@click.option(
+    "--country",
+    required=True,
+    help="ISO 3166-1 alpha-2 country code or supported alias, such as US or IN.",
+)
 @click.option("--account-number", required=True, help="Actual account number.")
 @click.option(
     "--type",
@@ -191,6 +196,7 @@ def account() -> None:
     "--statement-ref",
     "statement_account_ref",
     help="Optional parser-visible account reference, such as last four digits.",
+    hidden=True,
 )
 @click.option("--display-name", help="Optional friendly account label.")
 @click.pass_context
@@ -219,7 +225,7 @@ def account_add(
             statement_account_ref=statement_account_ref,
             display_name=display_name,
         )
-    except AccountAlreadyExistsError as exc:
+    except (AccountAlreadyExistsError, CountryCodeError) as exc:
         raise click.ClickException(str(exc)) from exc
 
     runtime.log.debug(

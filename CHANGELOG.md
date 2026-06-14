@@ -93,5 +93,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Changed
 
+- Normalized account bank country values to ISO 3166-1 alpha-2 codes such as
+  `US` and `IN`, while accepting common friendly aliases during account setup.
+- Hid the advanced `account add --statement-ref` option from normal help so
+  full-account-number setup stays clear for supported statement imports.
 - Renamed the installed CLI command from `bank-buddy` to `bankbuddy` and removed
   the dashed command name.
