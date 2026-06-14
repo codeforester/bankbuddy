@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.18
+**Version:** 1.19
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.19: Added `tx list --bank`, `--currency`, `--account-number`, and
+  `--account-last4` filters. Full account numbers may be used to filter rows,
+  but list output remains display-name or masked-suffix based.
 - v1.18: Added `tx list --format pretty|csv|tsv`, made aligned `pretty`
   output the default, and kept CSV/TSV transaction output to clean rectangular
   rows without JSON or YAML.
@@ -600,6 +603,10 @@ bankbuddy import retry ATTEMPT_ID --account-id ID
 ```text
 bankbuddy tx list
 bankbuddy tx list --account-id ACCOUNT_ID
+bankbuddy tx list --bank BANK
+bankbuddy tx list --currency CURRENCY
+bankbuddy tx list --account-number ACCOUNT_NUMBER
+bankbuddy tx list --account-last4 LAST4
 bankbuddy tx list --from DATE --to DATE
 bankbuddy tx list --direction debit
 bankbuddy tx list --direction credit
@@ -613,7 +620,21 @@ bankbuddy tx categorize TX_ID CATEGORY
 
 `tx list --direction debit` shows negative-amount transactions. `tx list
 --direction credit` shows positive-amount transactions. The direction filter
-can be combined with account and date filters.
+can be combined with account, bank, currency, and date filters.
+
+`tx list --bank` matches the configured bank name case-insensitively.
+`tx list --currency` filters by normalized ISO currency code. `tx list
+--account-number` accepts the actual stored account number after digit
+normalization and returns no rows if no configured account matches. `tx list
+--account-last4` is a convenience selector that must resolve to exactly one
+configured account; missing or ambiguous suffixes fail with a clear error so
+the user can switch to `--account-id` or `--account-number`. Transaction list
+output still uses display names or masked account suffixes and never prints the
+full account number.
+
+All transaction-list filters compose with each other. For example, a user can
+combine `--bank`, `--currency`, `--account-last4`, `--direction`, date range,
+sort, view, format, and summary flags in one command.
 
 `tx list --sort` accepts comma-separated public fields: `id`, `date`, `amount`,
 `account`, `currency`, and `description`. Field-level directions such as
@@ -635,7 +656,6 @@ transaction table. JSON and YAML are out of scope for transaction listing.
 Later transaction commands and filters:
 
 ```text
-bankbuddy tx list --bank BANK
 bankbuddy tx list --category CATEGORY
 bankbuddy tx list --uncategorized
 ```
@@ -816,7 +836,8 @@ Cloud sync and automated backup are out of scope for early phases.
 - USD and INR schema support, with the first parser producing USD transactions
 - transaction hash deduplication with visible summary
 - `import history`
-- `tx list`
+- `tx list` with account, bank, currency, date, debit/credit, sort, view,
+  format, and summary controls
 - canonical import file names and managed archive copies for explicit imports
 - `report spending`
 - `export sqlite`

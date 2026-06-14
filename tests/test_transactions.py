@@ -9,6 +9,7 @@ from bankbuddy.paths import AppPaths
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.transactions import list_transactions
 from bankbuddy.transactions import summarize_transactions
+from bankbuddy.transactions import TransactionFilterError
 from bankbuddy.transactions import TransactionRow
 from bankbuddy.transactions import TransactionSortError
 
@@ -141,6 +142,108 @@ def test_list_transactions_direction_composes_with_account_and_dates(tmp_path) -
     assert len(rows) == 1
     assert rows[0].description == "COFFEE SHOP"
     assert rows[0].account_id == first_account.account_id
+
+
+def test_list_transactions_filters_by_bank_name(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    matching_rows = list_transactions(paths, bank_name="bank of america")
+    missing_rows = list_transactions(paths, bank_name="Other Bank")
+
+    assert [row.description for row in matching_rows] == [
+        "COFFEE SHOP",
+        "PAYROLL",
+    ]
+    assert missing_rows == []
+
+
+def test_list_transactions_filters_by_currency(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    matching_rows = list_transactions(paths, currency="usd")
+    missing_rows = list_transactions(paths, currency="INR")
+
+    assert [row.description for row in matching_rows] == [
+        "COFFEE SHOP",
+        "PAYROLL",
+    ]
+    assert missing_rows == []
+
+
+def test_list_transactions_filters_by_normalized_account_number(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123 456 789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    matching_rows = list_transactions(paths, account_number="123-456-789")
+    missing_rows = list_transactions(paths, account_number="0000")
+
+    assert [row.description for row in matching_rows] == [
+        "COFFEE SHOP",
+        "PAYROLL",
+    ]
+    assert missing_rows == []
+
+
+def test_list_transactions_filters_by_unambiguous_account_last4(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123 456 789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    rows = list_transactions(paths, account_last4="6789")
+
+    assert [row.description for row in rows] == ["COFFEE SHOP", "PAYROLL"]
+
+
+def test_list_transactions_rejects_invalid_account_last4(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    add_boa_account(paths, account_number="123456789")
+
+    with pytest.raises(
+        TransactionFilterError,
+        match="Account last four digits must contain exactly four digits",
+    ):
+        list_transactions(paths, account_last4="789")
+
+
+def test_list_transactions_rejects_missing_account_last4(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    add_boa_account(paths, account_number="123456789")
+
+    with pytest.raises(TransactionFilterError, match="No account matches"):
+        list_transactions(paths, account_last4="0000")
+
+
+def test_list_transactions_rejects_ambiguous_account_last4(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    add_boa_account(paths, account_number="123456789")
+    add_boa_account(paths, account_number="987656789")
+
+    with pytest.raises(
+        TransactionFilterError,
+        match="Account last four digits are ambiguous",
+    ):
+        list_transactions(paths, account_last4="6789")
 
 
 def test_list_transactions_sorts_by_field_directions(tmp_path) -> None:
