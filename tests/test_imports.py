@@ -136,6 +136,49 @@ def test_extract_boa_pdf_statement_period_from_account_header() -> None:
     )
 
 
+def test_extract_boa_pdf_statement_period_from_combined_statement_header() -> None:
+    assert extract_boa_pdf_statement_period(
+        """
+        Bank of America
+        Your combined statement
+        for March 21, 2019 to April 19, 2019
+        Your deposit accounts Account/plan number Ending balance Details on
+        Account number: 1234 5678 901145
+        """
+    ) == (
+        "2019-03-21",
+        "2019-04-19",
+    )
+
+
+def test_extract_boa_pdf_statement_period_from_legacy_page_header() -> None:
+    assert extract_boa_pdf_statement_period(
+        """
+        Bank of America
+        Customer Name ! Account # 1234 5678 901145 ! March 21, 2019 to April 19, 2019
+        Account number: 1234 5678 901145
+        Account summary
+        """
+    ) == (
+        "2019-03-21",
+        "2019-04-19",
+    )
+
+
+def test_extract_boa_pdf_statement_period_failure_explains_supported_headers() -> None:
+    with pytest.raises(ImportFailure) as exc_info:
+        extract_boa_pdf_statement_period(
+            """
+            Bank of America
+            Account number: 1234 5678 901145
+            Account summary
+            """
+        )
+
+    assert "statement period was not found" in str(exc_info.value)
+    assert "Your combined statement" in str(exc_info.value)
+
+
 def test_extract_pdf_text_reads_synthetic_selectable_pdf(tmp_path) -> None:
     pdf_path = tmp_path / "selectable.pdf"
     write_text_pdf(pdf_path, ["Bank of America", "Account number 1234 5678 901145"])

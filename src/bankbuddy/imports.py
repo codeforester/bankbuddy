@@ -82,18 +82,37 @@ PDF_TRANSACTION_LINE_PATTERN = re.compile(
     r"^\s*(?P<date>\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+(?P<rest>.+?)\s*$"
 )
 PDF_MONEY_PATTERN = re.compile(r"-?\$?\d[\d,]*\.\d{2}|\(\$?\d[\d,]*\.\d{2}\)")
+BOA_STATEMENT_HEADER_DATE = r"[A-Za-z]+\s+\d{1,2},\s+\d{4}"
 BOA_STATEMENT_PERIOD_PATTERN = re.compile(
     r"Statement\s+Period:\s*"
-    r"(?P<start>[A-Za-z]+\s+\d{1,2},\s+\d{4})\s+through\s+"
-    r"(?P<end>[A-Za-z]+\s+\d{1,2},\s+\d{4})",
+    rf"(?P<start>{BOA_STATEMENT_HEADER_DATE})\s+through\s+"
+    rf"(?P<end>{BOA_STATEMENT_HEADER_DATE})",
     re.IGNORECASE,
 )
 BOA_ACCOUNT_HEADER_PERIOD_PATTERN = re.compile(
     r"\bfor\s+"
-    r"(?P<start>[A-Za-z]+\s+\d{1,2},\s+\d{4})\s+to\s+"
-    r"(?P<end>[A-Za-z]+\s+\d{1,2},\s+\d{4})\s+"
+    rf"(?P<start>{BOA_STATEMENT_HEADER_DATE})\s+to\s+"
+    rf"(?P<end>{BOA_STATEMENT_HEADER_DATE})\s+"
     r"Account\s+number\b",
     re.IGNORECASE,
+)
+BOA_COMBINED_STATEMENT_PERIOD_PATTERN = re.compile(
+    r"Your\s+combined\s+statement\s+for\s+"
+    rf"(?P<start>{BOA_STATEMENT_HEADER_DATE})\s+to\s+"
+    rf"(?P<end>{BOA_STATEMENT_HEADER_DATE})",
+    re.IGNORECASE,
+)
+BOA_LEGACY_ACCOUNT_HEADER_PERIOD_PATTERN = re.compile(
+    r"Account\s*#\s*(?:\d[\s-]*){6,}!\s*"
+    rf"(?P<start>{BOA_STATEMENT_HEADER_DATE})\s+to\s+"
+    rf"(?P<end>{BOA_STATEMENT_HEADER_DATE})",
+    re.IGNORECASE,
+)
+BOA_STATEMENT_PERIOD_PATTERNS = (
+    BOA_STATEMENT_PERIOD_PATTERN,
+    BOA_ACCOUNT_HEADER_PERIOD_PATTERN,
+    BOA_COMBINED_STATEMENT_PERIOD_PATTERN,
+    BOA_LEGACY_ACCOUNT_HEADER_PERIOD_PATTERN,
 )
 
 
@@ -187,11 +206,19 @@ def extract_boa_pdf_account_number(text: str) -> str:
 def extract_boa_pdf_statement_period(text: str) -> tuple[str, str]:
     """Return the statement period from a Bank of America PDF header."""
 
-    match = BOA_STATEMENT_PERIOD_PATTERN.search(text)
+    match = None
+    for pattern in BOA_STATEMENT_PERIOD_PATTERNS:
+        match = pattern.search(text)
+        if match is not None:
+            break
     if match is None:
-        match = BOA_ACCOUNT_HEADER_PERIOD_PATTERN.search(text)
-    if match is None:
-        raise ImportFailure("Bank of America PDF is missing a statement period.")
+        raise ImportFailure(
+            "Bank of America PDF statement period was not found in extracted text. "
+            "Supported headers include 'Statement Period: <Month D, YYYY> through "
+            "<Month D, YYYY>', 'for <Month D, YYYY> to <Month D, YYYY> Account "
+            "number', and 'Your combined statement' followed by 'for <Month D, "
+            "YYYY> to <Month D, YYYY>'."
+        )
     return (
         parse_statement_header_date(match.group("start")).isoformat(),
         parse_statement_header_date(match.group("end")).isoformat(),

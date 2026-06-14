@@ -9,6 +9,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Fixed
 
+- Fixed older Bank of America PDF statement-period extraction for combined
+  statement headers and legacy page headers, and made unsupported period
+  layouts report the expected header shapes.
 - Fixed Bank of America PDF statement-period extraction for eStatement account
   headers that use `for <date> to <date> Account number`.
 
