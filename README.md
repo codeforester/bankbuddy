@@ -84,6 +84,7 @@ bankbuddy tx list --category Groceries
 bankbuddy tx list --uncategorized
 bankbuddy tx list --account-id 1 --from 2026-04-01 --to 2026-05-31
 bankbuddy audit statements --years 2025
+bankbuddy audit statements --bank "HDFC Bank" --years 2025
 bankbuddy audit statements --years 2024,2025 --account-last4 1145
 bankbuddy audit statements --from 2025-01-01 --to 2025-12-31
 bankbuddy report spending --year 2026
@@ -161,7 +162,8 @@ and statement start/end dates, and can be filtered with `--bank`,
 missing gaps, overlapping periods, duplicate periods, and covered periods.
 Use `--years YYYY[,YYYY...]` for independent calendar-year windows or
 `--from YYYY-MM-DD --to YYYY-MM-DD` for one explicit range. The audit is
-read-only and can be narrowed with `--account-id` or `--account-last4`.
+read-only and can be narrowed with `--bank`, `--account-id`, or
+`--account-last4`.
 
 Bank of America imports support text-selectable PDF statements first, plus CSV
 files when available. BOA PDF period extraction supports the statement-period
