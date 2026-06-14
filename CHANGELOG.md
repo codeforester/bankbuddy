@@ -14,6 +14,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy tx list --format pretty|csv|tsv`, with `pretty` as the
+  aligned default table output and CSV/TSV for clean machine-readable rows.
 - Added `bankbuddy tx list --sort`, `--order`, `--view`, and `--summary`
   options for ordering transactions, switching human-readable list views, and
   printing per-currency totals for the filtered result set.

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import csv
+from dataclasses import dataclass
 from datetime import datetime
+import io
 from pathlib import Path
+from typing import Callable
+from typing import Literal
 
 import click
 
@@ -36,6 +41,20 @@ from bankbuddy.transactions import list_transactions
 from bankbuddy.transactions import summarize_transactions
 from bankbuddy.transactions import TransactionRow
 from bankbuddy.transactions import TransactionSortError
+
+
+ColumnAlign = Literal["left", "right"]
+OutputFormat = Literal["pretty", "csv", "tsv"]
+
+
+@dataclass(frozen=True)
+class TransactionColumn:
+    """Display and machine-output metadata for one transaction column."""
+
+    header: str
+    machine_header: str
+    align: ColumnAlign
+    value: Callable[[TransactionRow], str]
 
 
 @click.group(
@@ -247,6 +266,14 @@ def tx() -> None:
     show_default=True,
     help="Transaction list view.",
 )
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["pretty", "csv", "tsv"], case_sensitive=False),
+    default="pretty",
+    show_default=True,
+    help="Transaction output format.",
+)
 @click.option("--summary", is_flag=True, help="Show summary totals for listed rows.")
 @click.pass_context
 def tx_list(
@@ -258,6 +285,7 @@ def tx_list(
     sort_expression: str | None,
     order: str,
     view: str,
+    output_format: str,
     summary: bool,
 ) -> None:
     """List imported transactions."""
@@ -280,9 +308,15 @@ def tx_list(
         raise click.ClickException(str(exc)) from exc
 
     normalized_view = view.lower()
+    normalized_format = output_format.lower()
+    if summary and normalized_format != "pretty":
+        raise click.ClickException(
+            "--summary is only supported with --format pretty."
+        )
+
     runtime.log.debug(
         "tx_list count=%s account_id=%s date_from=%s date_to=%s direction=%s "
-        "sort=%s order=%s view=%s summary=%s",
+        "sort=%s order=%s view=%s format=%s summary=%s",
         len(rows),
         account_id,
         normalized_date_from,
@@ -291,48 +325,184 @@ def tx_list(
         sort_expression,
         order,
         normalized_view,
+        normalized_format,
         summary,
     )
     if not rows:
+        if normalized_format in {"csv", "tsv"}:
+            render_transaction_rows(
+                rows,
+                view=normalized_view,
+                output_format=normalized_format,
+            )
+            return
         click.echo("No transactions found.")
         return
 
-    render_transaction_rows(rows, view=normalized_view)
+    render_transaction_rows(
+        rows,
+        view=normalized_view,
+        output_format=normalized_format,
+    )
     if summary:
         click.echo("")
         render_transaction_summary(rows)
 
 
-def render_transaction_rows(rows: list[TransactionRow], *, view: str) -> None:
-    """Render transaction rows for a named human-readable view."""
+def render_transaction_rows(
+    rows: list[TransactionRow],
+    *,
+    view: str,
+    output_format: str,
+) -> None:
+    """Render transaction rows for a view and output format."""
+
+    columns = transaction_columns(view)
+    if output_format == "pretty":
+        render_pretty_rows(rows, columns)
+        return
+
+    if output_format == "csv":
+        render_delimited_rows(rows, columns, delimiter=",")
+        return
+
+    render_delimited_rows(rows, columns, delimiter="\t")
+
+
+def transaction_columns(view: str) -> list[TransactionColumn]:
+    """Return the transaction columns selected by a named view."""
+
+    columns = {
+        "id": TransactionColumn(
+            "ID",
+            "id",
+            "right",
+            lambda row: str(row.transaction_id),
+        ),
+        "date": TransactionColumn(
+            "Date",
+            "date",
+            "left",
+            lambda row: row.transaction_date,
+        ),
+        "account": TransactionColumn(
+            "Account",
+            "account",
+            "left",
+            lambda row: row.account_display,
+        ),
+        "type": TransactionColumn(
+            "Type",
+            "type",
+            "left",
+            transaction_type,
+        ),
+        "amount": TransactionColumn(
+            "Amount",
+            "amount",
+            "right",
+            lambda row: format_minor_units(row.amount_minor_units),
+        ),
+        "currency": TransactionColumn(
+            "Currency",
+            "currency",
+            "left",
+            lambda row: row.currency,
+        ),
+        "description": TransactionColumn(
+            "Description",
+            "description",
+            "left",
+            lambda row: row.description,
+        ),
+    }
 
     if view == "compact":
-        click.echo("Date  Amount  Currency  Description")
-        for row in rows:
-            click.echo(
-                f"{row.transaction_date}  {format_minor_units(row.amount_minor_units)}  "
-                f"{row.currency}  {row.description}"
-            )
-        return
-
+        return [
+            columns["date"],
+            columns["amount"],
+            columns["currency"],
+            columns["description"],
+        ]
     if view == "ledger":
-        click.echo("ID  Date  Account  Type  Amount  Currency  Description")
-        for row in rows:
-            click.echo(
-                f"{row.transaction_id}  {row.transaction_date}  "
-                f"{row.account_display}  {transaction_type(row)}  "
-                f"{format_minor_units(row.amount_minor_units)}  "
-                f"{row.currency}  {row.description}"
-            )
-        return
+        return [
+            columns["id"],
+            columns["date"],
+            columns["account"],
+            columns["type"],
+            columns["amount"],
+            columns["currency"],
+            columns["description"],
+        ]
+    return [
+        columns["id"],
+        columns["date"],
+        columns["account"],
+        columns["amount"],
+        columns["currency"],
+        columns["description"],
+    ]
 
-    click.echo("ID  Date  Account  Amount  Currency  Description")
-    for row in rows:
-        click.echo(
-            f"{row.transaction_id}  {row.transaction_date}  "
-            f"{row.account_display}  {format_minor_units(row.amount_minor_units)}  "
-            f"{row.currency}  {row.description}"
+
+def render_pretty_rows(
+    rows: list[TransactionRow],
+    columns: list[TransactionColumn],
+) -> None:
+    """Render transaction rows as an aligned table."""
+
+    values = [[column.value(row) for column in columns] for row in rows]
+    widths = [
+        max(
+            [len(column.header)]
+            + [len(row_values[index]) for row_values in values]
         )
+        for index, column in enumerate(columns)
+    ]
+
+    click.echo(format_pretty_row(
+        [column.header for column in columns],
+        widths,
+        [column.align for column in columns],
+    ))
+    click.echo("-+-".join("-" * width for width in widths))
+    for row_values in values:
+        click.echo(format_pretty_row(
+            row_values,
+            widths,
+            [column.align for column in columns],
+        ))
+
+
+def format_pretty_row(
+    values: list[str],
+    widths: list[int],
+    aligns: list[ColumnAlign],
+) -> str:
+    """Format one aligned pretty-table row."""
+
+    cells = []
+    for value, width, align in zip(values, widths, aligns):
+        if align == "right":
+            cells.append(value.rjust(width))
+        else:
+            cells.append(value.ljust(width))
+    return " | ".join(cells)
+
+
+def render_delimited_rows(
+    rows: list[TransactionRow],
+    columns: list[TransactionColumn],
+    *,
+    delimiter: str,
+) -> None:
+    """Render transaction rows as CSV or TSV."""
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=delimiter, lineterminator="\n")
+    writer.writerow([column.machine_header for column in columns])
+    for row in rows:
+        writer.writerow([column.value(row) for column in columns])
+    click.echo(output.getvalue(), nl=False)
 
 
 def render_transaction_summary(rows: list[TransactionRow]) -> None:
