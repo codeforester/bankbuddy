@@ -35,6 +35,12 @@ bankbuddy account add \
   --account-number "<actual-number>" \
   --type savings \
   --currency INR
+bankbuddy account add \
+  --bank "HDFC Bank" \
+  --country IN \
+  --account-number "<actual-number>" \
+  --type savings \
+  --currency INR
 bankbuddy account list
 bankbuddy account summary
 bankbuddy account show 1
@@ -42,6 +48,8 @@ bankbuddy import --dry-run --file path/to/boa.pdf --account-id 1
 bankbuddy import --file path/to/boa.pdf --account-id 1
 bankbuddy import --dry-run --file path/to/icici.xls --account-id 2
 bankbuddy import --file path/to/icici.xls --account-id 2
+bankbuddy import --dry-run --file path/to/hdfc.xls --account-id 3
+bankbuddy import --file path/to/hdfc.xls --account-id 3
 bankbuddy import --dry-run inbox
 bankbuddy import inbox
 bankbuddy import inbox --account-id 1
@@ -162,11 +170,11 @@ header and the account header found in eStatement text. BOA PDF files in
 number; CSV inbox imports still require `--account-id` unless the file is an
 exact duplicate of a prior successful import.
 
-ICICI Bank imports support old Excel `.xls` statement exports. ICICI `.xls`
-files can be routed from `inbox/` by the full account number in the spreadsheet
-when exactly one configured ICICI INR account matches. Successful ICICI imports
-store transaction value dates and update the account latest balance snapshot
-from the statement balance.
+ICICI Bank and HDFC Bank imports support old Excel `.xls` statement exports.
+These `.xls` files can be routed from `inbox/` by the full account number in
+the spreadsheet when exactly one configured INR account for that bank matches.
+Successful spreadsheet imports store transaction value dates and update the
+account latest balance snapshot from the statement balance.
 
 Successful imports are copied into `~/BankBuddy/processed/<bank>/<year>/<month>/`
 with canonical filenames while the original explicit source files are left

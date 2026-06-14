@@ -54,6 +54,56 @@ ICICI_XLS_ROWS = [
     ],
 ]
 
+HDFC_XLS_ROWS = [
+    ["HDFC BANK Ltd.                                      Statement of accounts"],
+    ["Account Branch :JAYANAGAR-3RD BLOCK"],
+    ["Cust ID :12345678"],
+    ["Nomination  :  Registered", "Account No :123456789356   CLASSIC NR"],
+    [
+        "Statement From  :  01/01/2025         To  :  31/12/2025",
+        "A/C Open Date :02/02/2019",
+    ],
+    [
+        "Date",
+        "Narration",
+        "Chq./Ref.No.",
+        "Value Dt",
+        "Withdrawal Amt.",
+        "Deposit Amt.",
+        "Closing Balance",
+    ],
+    ["********", "**********************************", "************", "********"],
+    [
+        "09/01/25",
+        "UPI PAYMENT",
+        "REF001",
+        "09/01/25",
+        "500.00",
+        "",
+        "9,500.00",
+    ],
+    [
+        "31/12/25",
+        "RENT RECEIPT",
+        "REF002",
+        "31/12/25",
+        "",
+        "1,500.50",
+        "11,000.50",
+    ],
+    [
+        "01/01/26",
+        "INTEREST CREDIT",
+        "REF003",
+        "01/01/26",
+        "",
+        "10.00",
+        "11,010.50",
+    ],
+    ["STATEMENT SUMMARY  :-"],
+    ["Opening Balance", "Debits", "Credits", "Closing Bal"],
+]
+
 
 def test_import_file_command_reports_summary(tmp_path) -> None:
     csv_path = tmp_path / "boa.csv"
@@ -280,6 +330,66 @@ def test_import_file_dry_run_reports_icici_xls_latest_balance(
         assert conn.execute("select count(*) from import_files").fetchone()[0] == 0
 
 
+def test_import_file_dry_run_reports_hdfc_xls_latest_balance(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    xls_path = tmp_path / "hdfc.xls"
+    xls_path.write_bytes(b"synthetic xls placeholder")
+    runner = CliRunner()
+    home = tmp_path / "home"
+    env = {"BANKBUDDY_HOME": str(home)}
+    monkeypatch.setattr(
+        imports,
+        "parse_icici_xls",
+        lambda _path: (_ for _ in ()).throw(
+            imports.ImportFailure("not an ICICI statement")
+        ),
+    )
+    monkeypatch.setattr(
+        imports,
+        "parse_hdfc_xls",
+        lambda _path: imports.parse_hdfc_xls_rows(HDFC_XLS_ROWS),
+        raising=False,
+    )
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "HDFC Bank",
+            "--country",
+            "India",
+            "--account-number",
+            "123456789356",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(
+        main,
+        ["import", "--dry-run", "--file", str(xls_path), "--account-id", "1"],
+        env=env,
+    )
+
+    assert result.exit_code == 0
+    assert "Dry run: yes" in result.output
+    assert "Bank: HDFC Bank | Account ID: 1" in result.output
+    assert "Rows parsed: 3" in result.output
+    assert "Rows that would be imported: 3" in result.output
+    assert (
+        "Processed path: processed/hdfc-bank/2025/12/"
+        "hdfc-bank_9356_2025-01-01_2025-12-31.xls"
+    ) in result.output
+    assert "Latest balance: INR 11010.50 as of 2026-01-01" in result.output
+    assert "Database changed: no" in result.output
+
+
 def test_import_file_dry_run_parse_failure_does_not_record_attempt(tmp_path) -> None:
     csv_path = tmp_path / "boa.csv"
     csv_path.write_text("Date,Description\n06/10/2026,COFFEE SHOP\n", encoding="utf-8")
@@ -446,6 +556,63 @@ def test_import_inbox_command_dry_run_routes_icici_xls_by_account_number(
         "would-import  icici-statement.xls  parsed=2 would-import=2 duplicates=0  "
         "canonical=processed/icici-bank/2025/04/"
         "icici-bank_9012_2025-04-01_2025-04-30.xls"
+    ) in result.output
+    assert inbox_file.is_file()
+
+
+def test_import_inbox_command_dry_run_routes_hdfc_xls_by_account_number(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    inbox_file = inbox / "hdfc-statement.xls"
+    inbox_file.write_bytes(b"synthetic xls placeholder")
+    env = {"BANKBUDDY_HOME": str(home)}
+    monkeypatch.setattr(
+        imports,
+        "parse_icici_xls",
+        lambda _path: (_ for _ in ()).throw(
+            imports.ImportFailure("not an ICICI statement")
+        ),
+    )
+    monkeypatch.setattr(
+        imports,
+        "parse_hdfc_xls",
+        lambda _path: imports.parse_hdfc_xls_rows(HDFC_XLS_ROWS),
+        raising=False,
+    )
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "HDFC Bank",
+            "--country",
+            "India",
+            "--account-number",
+            "123456789356",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(main, ["import", "inbox", "--dry-run"], env=env)
+
+    assert result.exit_code == 0
+    assert "Dry run: yes" in result.output
+    assert "Inbox files: 1" in result.output
+    assert "Planned imports: 1" in result.output
+    assert (
+        "would-import  hdfc-statement.xls  parsed=3 would-import=3 duplicates=0  "
+        "canonical=processed/hdfc-bank/2025/12/"
+        "hdfc-bank_9356_2025-01-01_2025-12-31.xls"
     ) in result.output
     assert inbox_file.is_file()
 

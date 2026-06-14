@@ -213,7 +213,9 @@ def import_inbox(
                         logger=logger,
                     )
             else:
-                parsed_statement = statement_imports.parse_icici_xls(inbox_file)
+                parsed_statement, source_format = statement_imports.parse_xls_statement(
+                    inbox_file
+                )
                 resolved_account_id = account_id
                 if resolved_account_id is None:
                     resolved_account_id = account_id_for_parsed_statement(
@@ -233,7 +235,7 @@ def import_inbox(
                             statement_imports.record_failed_import(
                                 paths,
                                 inbox_file,
-                                source_format=statement_imports.ICICI_SOURCE_FORMAT,
+                                source_format=source_format,
                                 error_message=message,
                             )
                         raise ImportFailure(message)
@@ -244,7 +246,7 @@ def import_inbox(
                         inbox_file,
                         account_id=resolved_account_id,
                         parsed_statement=parsed_statement,
-                        source_format=statement_imports.ICICI_SOURCE_FORMAT,
+                        source_format=source_format,
                         import_label="XLS",
                         logger=logger,
                     )
@@ -254,7 +256,7 @@ def import_inbox(
                         inbox_file,
                         account_id=resolved_account_id,
                         parsed_statement=parsed_statement,
-                        source_format=statement_imports.ICICI_SOURCE_FORMAT,
+                        source_format=source_format,
                         import_label="XLS",
                         logger=logger,
                     )

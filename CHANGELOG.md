@@ -25,6 +25,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 - Added `Rental Income` as a built-in system income category for new and
   existing databases.
+- Added HDFC Bank `.xls` statement imports with INR transactions, value-date
+  storage, row-balance sanity checks, inbox account auto-routing, account-level
+  latest balance snapshots, and boundary-row deduplication.
 - Added manual transaction categorization with `bankbuddy category list`,
   `bankbuddy tx categorize`, `bankbuddy tx list --category`, and
   `bankbuddy tx list --uncategorized`.

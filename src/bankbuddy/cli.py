@@ -41,10 +41,10 @@ from bankbuddy.imports import ImportPlan
 from bankbuddy.imports import ImportSummary
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
-from bankbuddy.imports import import_icici_xls
+from bankbuddy.imports import import_xls_statement
 from bankbuddy.imports import plan_boa_csv_import
 from bankbuddy.imports import plan_boa_pdf_import
-from bankbuddy.imports import plan_icici_xls_import
+from bankbuddy.imports import plan_xls_statement_import
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.repairs import BofaPdfRepairFileResult
 from bankbuddy.repairs import BofaPdfRepairSummary
@@ -1688,14 +1688,14 @@ def run_statement_import(
                 )
         elif file_path.suffix.lower() == ".xls":
             if dry_run:
-                plan = plan_icici_xls_import(
+                plan = plan_xls_statement_import(
                     paths,
                     file_path,
                     account_id=account_id,
                     logger=runtime.log,
                 )
             else:
-                summary = import_icici_xls(
+                summary = import_xls_statement(
                     paths,
                     file_path,
                     account_id=account_id,
