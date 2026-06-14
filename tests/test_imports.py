@@ -14,6 +14,7 @@ from bankbuddy.imports import normalize_account_number
 from bankbuddy.imports import parse_boa_csv
 from bankbuddy.imports import parse_boa_pdf_text
 from bankbuddy.imports import plan_boa_csv_import
+from bankbuddy.imports import transaction_hash
 from bankbuddy.paths import resolve_app_paths
 
 
@@ -218,6 +219,68 @@ def test_parse_boa_pdf_text_accepts_two_digit_years() -> None:
     assert rows[0].transaction_date == "2026-04-23"
     assert rows[0].description == "GROCERY STORE"
     assert rows[0].amount_minor_units == -4217
+
+
+def test_parse_boa_pdf_text_folds_continuation_lines_into_description() -> None:
+    rows = parse_boa_pdf_text(
+        """
+        Bank of America
+        Account number 1234 5678 901145
+        Statement Period: January 1, 2026 through January 31, 2026
+        Transaction activity
+        Date Description Amount
+        01/20/26 Isha Foundation DES:DEBITS ID:Rpadmanabhaiah INDN:Ramesh Padmanabhaiah CO -100.00
+        ID:123456789 PPD
+        01/20/26 Isha Foundation DES:DEBITS ID:Rpadmanabhaiah INDN:Ramesh Padmanabhaiah CO -100.00
+        ID:987654321 PPD
+        """
+    )
+
+    assert len(rows) == 2
+    assert rows[0].description.endswith("ID:123456789 PPD")
+    assert rows[1].description.endswith("ID:987654321 PPD")
+    assert rows[0].normalized_description != rows[1].normalized_description
+
+
+def test_boa_pdf_transaction_hash_distinguishes_continuation_lines() -> None:
+    rows = parse_boa_pdf_text(
+        """
+        Bank of America
+        Account number 1234 5678 901145
+        Statement Period: January 1, 2026 through January 31, 2026
+        Transaction activity
+        Date Description Amount
+        01/20/26 BARCLAYCARD US DES:CREDITCARD ID:XXXXXXXXX INDN:SUDHA NAGENDRA CO -176.70
+        ID:111111111 WEB
+        01/20/26 BARCLAYCARD US DES:CREDITCARD ID:XXXXXXXXX INDN:SUDHA NAGENDRA CO -176.70
+        ID:222222222 WEB
+        """
+    )
+
+    hashes = [transaction_hash(row, source_format="boa_pdf") for row in rows]
+
+    assert len(set(hashes)) == 2
+
+
+def test_boa_pdf_transaction_hash_distinguishes_identical_statement_rows() -> None:
+    rows = parse_boa_pdf_text(
+        """
+        Bank of America
+        Account number 1234 5678 901145
+        Statement Period: January 1, 2026 through January 31, 2026
+        Transaction activity
+        Date Description Amount
+        01/20/26 Isha Foundation DES:DEBITS ID:Rpadmanabhaiah INDN:Ramesh Padmanabhaiah CO -100.00
+        ID:123456789 PPD
+        01/20/26 Isha Foundation DES:DEBITS ID:Rpadmanabhaiah INDN:Ramesh Padmanabhaiah CO -100.00
+        ID:123456789 PPD
+        """
+    )
+
+    hashes = [transaction_hash(row, source_format="boa_pdf") for row in rows]
+
+    assert rows[0].source_row_key != rows[1].source_row_key
+    assert len(set(hashes)) == 2
 
 
 def test_import_boa_csv_inserts_transactions_and_attempt(tmp_path) -> None:
