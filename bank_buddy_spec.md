@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.20
+**Version:** 1.21
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.21: Added `statements summary` and `statements list` for read-only
+  imported statement-file inventory by bank, account, year, and month. The
+  inventory view is separate from coverage auditing and uses successful import
+  metadata.
 - v1.20: Added `audit statements` for read-only imported statement coverage
   checks. The audit supports `--years`, explicit `--from/--to` date ranges,
   `--account-id`, and `--account-last4`, and reports missing gaps, overlaps,
@@ -663,6 +667,36 @@ Later transaction commands and filters:
 bankbuddy tx list --category CATEGORY
 bankbuddy tx list --uncategorized
 ```
+
+### Statement Inventory Commands
+
+```text
+bankbuddy statements summary
+bankbuddy statements summary --by year
+bankbuddy statements summary --by month
+bankbuddy statements summary --years YEAR[,YEAR...]
+bankbuddy statements summary --bank BANK_NAME
+bankbuddy statements summary --account-id ACCOUNT_ID
+bankbuddy statements summary --account-last4 LAST4
+bankbuddy statements list
+bankbuddy statements list --year YEAR
+bankbuddy statements list --bank BANK_NAME
+bankbuddy statements list --account-id ACCOUNT_ID
+bankbuddy statements list --account-last4 LAST4
+```
+
+`statements summary` and `statements list` are read-only inventory views over
+successful statement imports. `summary` groups statement files by statement end
+year by default, or by statement end month with `--by month`. `list` shows one
+row per successfully imported statement file, ordered by bank, account, and
+statement period.
+
+The inventory uses the first successful import attempt for each file/account
+pair as the representative row, so repeated explicit imports do not inflate
+file counts. Exact duplicate inbox attempts remain operational import history
+and are not counted as imported statement files. The command can be filtered by
+bank name, account id, unambiguous account last four digits, and statement end
+year.
 
 ### Audit Commands
 
