@@ -42,6 +42,25 @@ class Account:
     display_name: str | None
 
 
+@dataclass(frozen=True)
+class AccountSummary:
+    """A configured account with latest balance snapshot metadata."""
+
+    account_id: int
+    bank_name: str
+    country: str
+    account_number: str
+    account_type: str
+    currency: str
+    statement_account_ref: str | None
+    display_name: str | None
+    latest_balance_minor_units: int | None
+    latest_balance_currency: str | None
+    latest_balance_as_of_date: str | None
+    latest_balance_source_file_id: int | None
+    latest_balance_source: str | None
+
+
 def add_account(
     paths: AppPaths,
     *,
@@ -178,6 +197,89 @@ def list_accounts(paths: AppPaths) -> list[Account]:
         )
         for row in rows
     ]
+
+
+def list_account_summaries(paths: AppPaths) -> list[AccountSummary]:
+    """Return configured accounts with latest balance metadata."""
+
+    initialize_database(paths)
+    with connect_database(paths) as conn:
+        rows = conn.execute(
+            account_summary_query()
+            + """
+            order by banks.bank_name, accounts.account_id
+            """
+        ).fetchall()
+    return [account_summary_from_row(row) for row in rows]
+
+
+def get_account_summary(
+    paths: AppPaths,
+    *,
+    account_id: int,
+) -> AccountSummary | None:
+    """Return one configured account with latest balance metadata."""
+
+    initialize_database(paths)
+    with connect_database(paths) as conn:
+        row = conn.execute(
+            account_summary_query()
+            + """
+            where accounts.account_id = ?
+            """,
+            (account_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return account_summary_from_row(row)
+
+
+def account_summary_query() -> str:
+    """Return the common account summary select clause."""
+
+    return """
+        select
+            accounts.account_id,
+            banks.bank_name,
+            banks.country,
+            accounts.account_number,
+            accounts.account_type,
+            accounts.currency,
+            accounts.statement_account_ref,
+            accounts.display_name,
+            accounts.latest_balance_minor_units,
+            accounts.latest_balance_currency,
+            accounts.latest_balance_as_of_date,
+            accounts.latest_balance_source_file_id,
+            coalesce(
+                import_files.canonical_file_name,
+                import_files.file_name
+            ) as latest_balance_source
+        from accounts
+        join banks using (bank_id)
+        left join import_files
+          on import_files.file_id = accounts.latest_balance_source_file_id
+        """
+
+
+def account_summary_from_row(row: sqlite3.Row) -> AccountSummary:
+    """Build an account summary dataclass from a SQLite row."""
+
+    return AccountSummary(
+        account_id=int(row["account_id"]),
+        bank_name=row["bank_name"],
+        country=row["country"],
+        account_number=row["account_number"],
+        account_type=row["account_type"],
+        currency=row["currency"],
+        statement_account_ref=row["statement_account_ref"],
+        display_name=row["display_name"],
+        latest_balance_minor_units=row["latest_balance_minor_units"],
+        latest_balance_currency=row["latest_balance_currency"],
+        latest_balance_as_of_date=row["latest_balance_as_of_date"],
+        latest_balance_source_file_id=row["latest_balance_source_file_id"],
+        latest_balance_source=row["latest_balance_source"],
+    )
 
 
 def masked_account_number(account_number: str) -> str:

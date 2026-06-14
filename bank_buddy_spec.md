@@ -797,13 +797,17 @@ bankbuddy budget delete CATEGORY CURRENCY
 ### Setup & Admin Commands
 
 ```text
-bankbuddy setup bank add
-bankbuddy setup bank list
-bankbuddy setup account add
-bankbuddy setup account list
+bankbuddy account add
+bankbuddy account list
+bankbuddy account summary
+bankbuddy account show ACCOUNT_ID
 bankbuddy export sqlite --output FILE
 bankbuddy export sqlite --output FILE --force
 ```
+
+`account list` stays compact for account setup. `account summary` and
+`account show` expose latest statement-derived balance snapshots, as-of dates,
+and source files without printing full account numbers.
 
 Password commands should prompt interactively. Passwords should not be passed as
 plain CLI arguments.

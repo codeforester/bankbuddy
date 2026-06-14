@@ -343,3 +343,197 @@ def test_account_list_outputs_configured_accounts_with_last_four(tmp_path) -> No
         list_result.output
     )
     assert "123456789" not in list_result.output
+
+
+def test_account_summary_outputs_latest_balance_snapshot(tmp_path) -> None:
+    runner = CliRunner()
+    add_result = runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "ICICI Bank",
+            "--country",
+            "IN",
+            "--account-number",
+            "166601075148",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+            "--display-name",
+            "ICICI Joint NRO",
+        ],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+    paths = resolve_app_paths(tmp_path)
+    with connect_database(paths) as conn:
+        cursor = conn.execute(
+            """
+            insert into import_files (
+                file_name,
+                file_hash,
+                canonical_file_name,
+                processed_path
+            ) values (?, ?, ?, ?)
+            """,
+            (
+                "ICICI NRO 2025.xls",
+                "hash",
+                "icici-bank_5148_2025-01-01_2025-12-31.xls",
+                "processed/icici-bank/2025/12/"
+                "icici-bank_5148_2025-01-01_2025-12-31.xls",
+            ),
+        )
+        conn.execute(
+            """
+            update accounts
+            set latest_balance_minor_units = ?,
+                latest_balance_currency = ?,
+                latest_balance_as_of_date = ?,
+                latest_balance_source_file_id = ?
+            where account_id = 1
+            """,
+            (
+                2405025,
+                "INR",
+                "2025-12-31",
+                cursor.lastrowid,
+            ),
+        )
+        conn.commit()
+
+    summary_result = runner.invoke(
+        main,
+        ["account", "summary"],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert add_result.exit_code == 0
+    assert summary_result.exit_code == 0
+    assert "ID | Bank       | Name            | Type" in summary_result.output
+    assert "ICICI Bank" in summary_result.output
+    assert "ICICI Joint NRO" in summary_result.output
+    assert "savings" in summary_result.output
+    assert "INR 24050.25" in summary_result.output
+    assert "2025-12-31" in summary_result.output
+    assert "icici-bank_5148_2025-01-01_2025-12-31.xls" in summary_result.output
+    assert "166601075148" not in summary_result.output
+    assert "...5148" in summary_result.output
+
+
+def test_account_summary_shows_missing_balance_as_dash(tmp_path) -> None:
+    runner = CliRunner()
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    result = runner.invoke(
+        main,
+        ["account", "summary"],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0
+    assert "Bank of America" in result.output
+    assert "...6789" in result.output
+    assert " - | -" in result.output
+
+
+def test_account_show_outputs_account_detail_without_full_number(tmp_path) -> None:
+    runner = CliRunner()
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "ICICI Bank",
+            "--country",
+            "IN",
+            "--account-number",
+            "166601075148",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+            "--display-name",
+            "ICICI Joint NRO",
+        ],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+    paths = resolve_app_paths(tmp_path)
+    with connect_database(paths) as conn:
+        cursor = conn.execute(
+            """
+            insert into import_files (
+                file_name,
+                file_hash,
+                canonical_file_name
+            ) values (?, ?, ?)
+            """,
+            (
+                "ICICI NRO 2025.xls",
+                "hash",
+                "icici-bank_5148_2025-01-01_2025-12-31.xls",
+            ),
+        )
+        conn.execute(
+            """
+            update accounts
+            set latest_balance_minor_units = ?,
+                latest_balance_currency = ?,
+                latest_balance_as_of_date = ?,
+                latest_balance_source_file_id = ?
+            where account_id = 1
+            """,
+            (2405025, "INR", "2025-12-31", cursor.lastrowid),
+        )
+        conn.commit()
+
+    result = runner.invoke(
+        main,
+        ["account", "show", "1"],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0
+    assert "ID: 1" in result.output
+    assert "Bank: ICICI Bank" in result.output
+    assert "Country: IN" in result.output
+    assert "Name: ICICI Joint NRO" in result.output
+    assert "Account: ...5148" in result.output
+    assert "Latest balance: INR 24050.25" in result.output
+    assert "Latest balance as of: 2025-12-31" in result.output
+    assert (
+        "Latest balance source: icici-bank_5148_2025-01-01_2025-12-31.xls"
+        in result.output
+    )
+    assert "166601075148" not in result.output
+
+
+def test_account_show_rejects_unknown_account(tmp_path) -> None:
+    result = CliRunner().invoke(
+        main,
+        ["account", "show", "999"],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 1
+    assert "Account not found: 999" in result.output
