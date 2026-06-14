@@ -14,6 +14,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy audit statements` for read-only statement coverage checks
+  that report missing gaps, overlaps, duplicate periods, and covered periods
+  across imported statement metadata.
 - Added `bankbuddy tx list --bank`, `--currency`, `--account-number`, and
   `--account-last4` filters for narrowing transaction review by bank, currency,
   exact account number, or unambiguous account suffix.
