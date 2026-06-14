@@ -42,6 +42,10 @@ bankbuddy import history --status success --limit 10
 bankbuddy import retry 1
 bankbuddy import retry 1 --account-id 1
 bankbuddy tx list
+bankbuddy tx list --bank "Bank of America"
+bankbuddy tx list --currency USD
+bankbuddy tx list --account-number "<actual-number>"
+bankbuddy tx list --account-last4 1145
 bankbuddy tx list --direction debit
 bankbuddy tx list --direction credit
 bankbuddy tx list --sort date:desc,amount
@@ -104,6 +108,11 @@ bankbuddy -v --log-file /tmp/bankbuddy.log import \
 
 Primary command output goes to stdout. Runtime diagnostics go to stderr, and
 debug logs avoid full account numbers and raw statement contents.
+
+`bankbuddy tx list` can filter by `--account-id`, `--bank`, `--currency`,
+`--account-number`, `--account-last4`, date range, and debit/credit direction.
+Full account numbers are accepted for filtering, but transaction output keeps
+using display names or masked account suffixes.
 
 Bank of America imports support text-selectable PDF statements first, plus CSV
 files when available. BOA PDF period extraction supports the statement-period

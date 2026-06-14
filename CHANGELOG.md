@@ -14,6 +14,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy tx list --bank`, `--currency`, `--account-number`, and
+  `--account-last4` filters for narrowing transaction review by bank, currency,
+  exact account number, or unambiguous account suffix.
 - Added `bankbuddy tx list --format pretty|csv|tsv`, with `pretty` as the
   aligned default table output and CSV/TSV for clean machine-readable rows.
 - Added `bankbuddy tx list --sort`, `--order`, `--view`, and `--summary`
