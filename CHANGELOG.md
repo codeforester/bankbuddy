@@ -9,6 +9,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Fixed
 
+- Added a dry-run-first repair command for historical Bank of America PDF
+  imports affected by the PDF transaction identity change, including safe hash
+  backfill and insertion of previously skipped legitimate rows.
 - Fixed Bank of America PDF parsing so continuation lines such as `ID:...`
   are included in transaction identity instead of collapsing distinct same-day
   same-amount rows into skipped duplicates.
