@@ -25,6 +25,23 @@ def add_boa_account(
     )
 
 
+def add_hdfc_account(
+    paths: AppPaths,
+    *,
+    account_number: str = "1234569356",
+    display_name: str | None = "HDFC Joint NRO",
+) -> Account:
+    return add_account(
+        paths,
+        bank_name="HDFC Bank",
+        country="IN",
+        account_number=account_number,
+        account_type="savings",
+        currency="INR",
+        display_name=display_name,
+    )
+
+
 def add_statement(
     paths: AppPaths,
     account: Account,
@@ -164,6 +181,29 @@ def test_audit_statements_filters_by_account_last4(tmp_path) -> None:
     assert result.exit_code == 0
     assert "Savings" in result.output
     assert "Everyday Checking" not in result.output
+
+
+def test_audit_statements_filters_by_bank_name(tmp_path) -> None:
+    home, paths, _first_account = seed_home(tmp_path)
+    hdfc_account = add_hdfc_account(paths)
+    add_statement(
+        paths,
+        hdfc_account,
+        start_date="2025-01-01",
+        end_date="2025-12-31",
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["audit", "statements", "--bank", "hdfc bank", "--years", "2025"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "HDFC Joint NRO" in result.output
+    assert "HDFC Bank" in result.output
+    assert "Everyday Checking" not in result.output
+    assert "Bank of America" not in result.output
 
 
 def test_audit_statements_rejects_conflicting_date_selectors(tmp_path) -> None:

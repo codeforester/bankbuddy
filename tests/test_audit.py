@@ -24,6 +24,23 @@ def add_boa_account(
     )
 
 
+def add_hdfc_account(
+    paths: AppPaths,
+    *,
+    account_number: str = "1234569356",
+    display_name: str | None = "HDFC Joint NRO",
+) -> Account:
+    return add_account(
+        paths,
+        bank_name="HDFC Bank",
+        country="IN",
+        account_number=account_number,
+        account_type="savings",
+        currency="INR",
+        display_name=display_name,
+    )
+
+
 def add_statement(
     paths: AppPaths,
     account: Account,
@@ -263,6 +280,58 @@ def test_audit_statement_coverage_filters_by_account_last4(tmp_path) -> None:
     assert len(audits) == 1
     assert audits[0].account_id == second_account.account_id
     assert audits[0].account_display == "Savings"
+
+
+def test_audit_statement_coverage_filters_by_bank_name(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    boa_account = add_boa_account(paths)
+    hdfc_account = add_hdfc_account(paths)
+    add_statement(paths, boa_account, start_date="2025-01-01", end_date="2025-12-31")
+    add_statement(
+        paths,
+        hdfc_account,
+        start_date="2025-01-01",
+        end_date="2025-12-31",
+        file_name="hdfc-bank_9356_2025-01-01_2025-12-31.xls",
+    )
+
+    audits = audit_statement_coverage(
+        paths,
+        bank_name="hdfc bank",
+        years=[2025],
+    )
+
+    assert len(audits) == 1
+    assert audits[0].account_id == hdfc_account.account_id
+    assert audits[0].bank_name == "HDFC Bank"
+    assert audits[0].account_display == "HDFC Joint NRO"
+
+
+def test_audit_statement_coverage_uses_bank_to_disambiguate_account_last4(
+    tmp_path,
+) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    boa_account = add_boa_account(paths, account_number="1234569356")
+    hdfc_account = add_hdfc_account(paths, account_number="9999999356")
+    add_statement(paths, boa_account, start_date="2025-01-01", end_date="2025-12-31")
+    add_statement(
+        paths,
+        hdfc_account,
+        start_date="2025-01-01",
+        end_date="2025-12-31",
+        file_name="hdfc-bank_9356_2025-01-01_2025-12-31.xls",
+    )
+
+    audits = audit_statement_coverage(
+        paths,
+        bank_name="HDFC Bank",
+        account_last4="9356",
+        years=[2025],
+    )
+
+    assert len(audits) == 1
+    assert audits[0].account_id == hdfc_account.account_id
+    assert audits[0].bank_name == "HDFC Bank"
 
 
 def test_audit_statement_coverage_rejects_ambiguous_account_last4(tmp_path) -> None:

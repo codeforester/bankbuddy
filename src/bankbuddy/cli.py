@@ -948,6 +948,7 @@ def audit() -> None:
 
 
 @audit.command("statements")
+@click.option("--bank", "bank_name", help="Filter by exact bank name.")
 @click.option("--account-id", type=int, help="Filter by configured account id.")
 @click.option("--account-last4", help="Filter by unambiguous account suffix.")
 @click.option("--years", help="Comma-separated calendar years to audit.")
@@ -956,6 +957,7 @@ def audit() -> None:
 @click.pass_context
 def audit_statements(
     ctx: click.Context,
+    bank_name: str | None,
     account_id: int | None,
     account_last4: str | None,
     years: str | None,
@@ -972,6 +974,7 @@ def audit_statements(
         parsed_years = parse_audit_years(years)
         audits = audit_statement_coverage(
             paths,
+            bank_name=bank_name,
             account_id=account_id,
             account_last4=account_last4,
             years=parsed_years,
@@ -982,9 +985,10 @@ def audit_statements(
         raise click.ClickException(str(exc)) from exc
 
     runtime.log.debug(
-        "audit_statements count=%s account_id=%s account_last4=%s years=%s "
-        "date_from=%s date_to=%s",
+        "audit_statements count=%s bank=%s account_id=%s account_last4=%s "
+        "years=%s date_from=%s date_to=%s",
         len(audits),
+        bank_name,
         account_id,
         account_number_suffix(account_last4),
         parsed_years,

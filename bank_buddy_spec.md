@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.25
+**Version:** 1.26
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.26: Added `audit statements --bank` so statement coverage audits can be
+  narrowed by bank name consistently with statement inventory and transaction
+  listing commands.
 - v1.25: Added HDFC Bank `.xls` statement import with INR transactions,
   statement-period metadata, value dates, row-balance sanity checks, inbox
   account auto-routing, account latest balance snapshots, and boundary-row
@@ -27,8 +30,8 @@ control of their financial data without relying on third-party services.
   metadata.
 - v1.20: Added `audit statements` for read-only imported statement coverage
   checks. The audit supports `--years`, explicit `--from/--to` date ranges,
-  `--account-id`, and `--account-last4`, and reports missing gaps, overlaps,
-  duplicate periods, and covered periods.
+  `--bank`, `--account-id`, and `--account-last4`, and reports missing gaps,
+  overlaps, duplicate periods, and covered periods.
 - v1.19: Added `tx list --bank`, `--currency`, `--account-number`, and
   `--account-last4` filters. Full account numbers may be used to filter rows,
   but list output remains display-name or masked-suffix based.
@@ -752,6 +755,7 @@ year.
 bankbuddy audit statements
 bankbuddy audit statements --years YEAR[,YEAR...]
 bankbuddy audit statements --from DATE --to DATE
+bankbuddy audit statements --bank BANK_NAME
 bankbuddy audit statements --account-id ACCOUNT_ID
 bankbuddy audit statements --account-last4 LAST4
 ```
@@ -768,8 +772,10 @@ audits each requested calendar year as an independent window. `--from` and
 together. If no date selector is provided, the audit uses each selected
 account's imported coverage range.
 
-The initial account selectors are `--account-id` and `--account-last4`.
-`--account-last4` must resolve to exactly one configured account. Balance
+The account selectors are `--bank`, `--account-id`, and `--account-last4`.
+`--bank` matches the configured bank name case-insensitively.
+`--account-last4` must resolve to exactly one configured account, after any
+bank filter is applied. Balance
 reconciliation and missing-transaction inference beyond parser-local row
 balance checks are out of scope until statement balance history is designed and
 stored. The account-level latest balance snapshot is useful for orientation,

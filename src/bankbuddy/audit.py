@@ -61,6 +61,7 @@ class AuditFilterError(ValueError):
 def audit_statement_coverage(
     paths: AppPaths,
     *,
+    bank_name: str | None = None,
     account_id: int | None = None,
     account_last4: str | None = None,
     years: list[int] | None = None,
@@ -71,13 +72,23 @@ def audit_statement_coverage(
 
     initialize_database(paths)
     validate_date_selectors(years=years, date_from=date_from, date_to=date_to)
+    normalized_bank_name = normalize_bank_name(bank_name)
     selected_account_id = resolve_selected_account_id(
         paths,
+        bank_name=normalized_bank_name,
         account_id=account_id,
         account_last4=account_last4,
     )
-    accounts = list_auditable_accounts(paths, account_id=selected_account_id)
-    periods_by_account = statement_periods_by_account(paths, account_id=selected_account_id)
+    accounts = list_auditable_accounts(
+        paths,
+        bank_name=normalized_bank_name,
+        account_id=selected_account_id,
+    )
+    periods_by_account = statement_periods_by_account(
+        paths,
+        bank_name=normalized_bank_name,
+        account_id=selected_account_id,
+    )
 
     audits: list[AccountStatementAudit] = []
     for account in accounts:
@@ -125,6 +136,7 @@ def validate_date_selectors(
 def resolve_selected_account_id(
     paths: AppPaths,
     *,
+    bank_name: str | None,
     account_id: int | None,
     account_last4: str | None,
 ) -> int | None:
@@ -141,13 +153,23 @@ def resolve_selected_account_id(
             "Account last four digits must contain exactly four digits."
         )
 
+    conditions: list[str] = []
+    parameters: list[object] = []
+    if bank_name is not None:
+        conditions.append("lower(banks.bank_name) = lower(?)")
+        parameters.append(bank_name)
+    where_clause = f"where {' and '.join(conditions)}" if conditions else ""
+
     with connect_database(paths) as conn:
         rows = conn.execute(
-            """
+            f"""
             select account_id, account_number
             from accounts
+            join banks using (bank_id)
+            {where_clause}
             order by account_id
-            """
+            """,
+            parameters,
         ).fetchall()
 
     matches = [
@@ -168,12 +190,16 @@ def resolve_selected_account_id(
 def list_auditable_accounts(
     paths: AppPaths,
     *,
+    bank_name: str | None,
     account_id: int | None,
 ) -> list[AccountSummary]:
     """Return configured accounts selected for audit."""
 
     conditions: list[str] = []
     parameters: list[object] = []
+    if bank_name is not None:
+        conditions.append("lower(banks.bank_name) = lower(?)")
+        parameters.append(bank_name)
     if account_id is not None:
         conditions.append("accounts.account_id = ?")
         parameters.append(account_id)
@@ -209,6 +235,7 @@ def list_auditable_accounts(
 def statement_periods_by_account(
     paths: AppPaths,
     *,
+    bank_name: str | None,
     account_id: int | None,
 ) -> dict[int, list[StatementPeriod]]:
     """Return successful imported statement periods keyed by account id."""
@@ -220,6 +247,9 @@ def statement_periods_by_account(
         "import_files.statement_end_date is not null",
     ]
     parameters: list[object] = []
+    if bank_name is not None:
+        conditions.append("lower(banks.bank_name) = lower(?)")
+        parameters.append(bank_name)
     if account_id is not None:
         conditions.append("import_attempts.account_id = ?")
         parameters.append(account_id)
@@ -235,6 +265,8 @@ def statement_periods_by_account(
                 coalesce(import_files.canonical_file_name, import_files.file_name) as file_name
             from import_attempts
             join import_files using (file_id)
+            join accounts on accounts.account_id = import_attempts.account_id
+            join banks on banks.bank_id = accounts.bank_id
             where {' and '.join(conditions)}
             order by
                 import_attempts.account_id,
@@ -375,3 +407,14 @@ def normalize_account_digits(value: str) -> str:
     """Return only digits from an account selector."""
 
     return "".join(char for char in value if char.isdigit())
+
+
+def normalize_bank_name(bank_name: str | None) -> str | None:
+    """Return a normalized bank selector."""
+
+    if bank_name is None:
+        return None
+    normalized = bank_name.strip()
+    if not normalized:
+        raise AuditFilterError("Bank name must not be empty.")
+    return normalized

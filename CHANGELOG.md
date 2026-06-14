@@ -28,6 +28,8 @@ and versions are tracked in the repo-root `VERSION` file.
 - Added HDFC Bank `.xls` statement imports with INR transactions, value-date
   storage, row-balance sanity checks, inbox account auto-routing, account-level
   latest balance snapshots, and boundary-row deduplication.
+- Added `bankbuddy audit statements --bank` for narrowing statement coverage
+  audits by bank name.
 - Added manual transaction categorization with `bankbuddy category list`,
   `bankbuddy tx categorize`, `bankbuddy tx list --category`, and
   `bankbuddy tx list --uncategorized`.
