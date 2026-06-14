@@ -37,7 +37,11 @@ from bankbuddy.imports import plan_boa_pdf_import
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.repairs import BofaPdfRepairFileResult
 from bankbuddy.repairs import BofaPdfRepairSummary
+from bankbuddy.repairs import RepairSourceFormatError
+from bankbuddy.repairs import StatementRepairFileResult
+from bankbuddy.repairs import StatementRepairSummary
 from bankbuddy.repairs import repair_boa_pdf_imports
+from bankbuddy.repairs import repair_statement_imports
 from bankbuddy.reports import spending_report
 from bankbuddy.runtime import CliRuntime
 from bankbuddy.runtime import RuntimeConfigError
@@ -1022,9 +1026,62 @@ def repair_bofa_pdf_imports_command(
     render_bofa_pdf_repair_summary(summary)
 
 
+@repair.command("statement-imports")
+@click.option(
+    "--source-format",
+    required=True,
+    help="Imported statement source format to repair, such as boa_pdf.",
+)
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    help="Apply database changes. Defaults to dry-run.",
+)
+@click.pass_context
+def repair_statement_imports_command(
+    ctx: click.Context,
+    source_format: str,
+    apply_changes: bool,
+) -> None:
+    """Repair historical statement import rows by source format."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        summary = repair_statement_imports(
+            paths,
+            source_format=source_format,
+            dry_run=not apply_changes,
+        )
+    except RepairSourceFormatError as exc:
+        raise click.ClickException(str(exc)) from exc
+    runtime.log.debug(
+        "repair_statement_imports source_format=%s dry_run=%s files_scanned=%s "
+        "files_changed=%s files_failed=%s hashes_updated=%s rows_inserted=%s "
+        "attempts_updated=%s",
+        summary.source_format,
+        summary.dry_run,
+        summary.files_scanned,
+        summary.files_changed,
+        summary.files_failed,
+        summary.hashes_updated,
+        summary.rows_inserted,
+        summary.attempts_updated,
+    )
+    render_statement_repair_summary(summary)
+
+
 def render_bofa_pdf_repair_summary(summary: BofaPdfRepairSummary) -> None:
     """Render a Bank of America PDF repair summary."""
 
+    render_statement_repair_summary(summary)
+
+
+def render_statement_repair_summary(summary: StatementRepairSummary) -> None:
+    """Render a statement import repair summary."""
+
+    click.echo(f"Source format: {summary.source_format}")
     click.echo(f"Dry run: {'yes' if summary.dry_run else 'no'}")
     click.echo(f"Files scanned: {summary.files_scanned}")
     click.echo(f"Files changed: {summary.files_changed}")
@@ -1033,13 +1090,19 @@ def render_bofa_pdf_repair_summary(summary: BofaPdfRepairSummary) -> None:
     click.echo(f"Rows to insert: {summary.rows_inserted}")
     click.echo(f"Import attempts to update: {summary.attempts_updated}")
     if summary.results:
-        render_bofa_pdf_repair_results(summary.results)
+        render_statement_repair_results(summary.results)
     database_changed = not summary.dry_run and summary.files_changed > 0
     click.echo(f"Database changed: {'yes' if database_changed else 'no'}")
 
 
 def render_bofa_pdf_repair_results(results: list[BofaPdfRepairFileResult]) -> None:
     """Render per-file repair results."""
+
+    render_statement_repair_results(results)
+
+
+def render_statement_repair_results(results: list[StatementRepairFileResult]) -> None:
+    """Render per-file statement repair results."""
 
     render_pretty_table(
         [
