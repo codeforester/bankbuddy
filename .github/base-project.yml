@@ -1,0 +1,7 @@
+project:
+  areas: []
+  initiatives: []
+  issue_defaults:
+    status: Backlog
+    priority: P2
+    size: S
