@@ -8,6 +8,7 @@ from typing import Iterable
 from typing import Literal
 
 from bankbuddy.accounts import masked_account_number
+from bankbuddy.currency import normalize_currency
 from bankbuddy.database import connect_database, initialize_database
 from bankbuddy.paths import AppPaths
 
@@ -51,10 +52,18 @@ class TransactionSortError(ValueError):
     """Raised when a transaction sort expression cannot be parsed."""
 
 
+class TransactionFilterError(ValueError):
+    """Raised when a transaction filter cannot be resolved safely."""
+
+
 def list_transactions(
     paths: AppPaths,
     *,
     account_id: int | None = None,
+    bank_name: str | None = None,
+    currency: str | None = None,
+    account_number: str | None = None,
+    account_last4: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     direction: Literal["debit", "credit"] | None = None,
@@ -69,6 +78,27 @@ def list_transactions(
     if account_id is not None:
         conditions.append("transactions.account_id = ?")
         parameters.append(account_id)
+    if bank_name is not None:
+        normalized_bank_name = bank_name.strip()
+        if not normalized_bank_name:
+            raise TransactionFilterError("Bank name must not be empty.")
+        conditions.append("lower(banks.bank_name) = lower(?)")
+        parameters.append(normalized_bank_name)
+    if currency is not None:
+        conditions.append("transactions.currency = ?")
+        parameters.append(normalize_currency(currency))
+    if account_number is not None:
+        add_account_id_filter(
+            conditions,
+            parameters,
+            account_ids_for_number(paths, account_number),
+        )
+    if account_last4 is not None:
+        add_account_id_filter(
+            conditions,
+            parameters,
+            [resolve_account_last4(paths, account_last4)],
+        )
     if date_from is not None:
         conditions.append("transactions.transaction_date >= ?")
         parameters.append(date_from)
@@ -98,6 +128,7 @@ def list_transactions(
                 accounts.display_name
             from transactions
             join accounts using (account_id)
+            join banks using (bank_id)
             {where_clause}
             {order_clause}
             """,
@@ -117,6 +148,87 @@ def list_transactions(
         )
         for row in rows
     ]
+
+
+def account_ids_for_number(paths: AppPaths, account_number: str) -> list[int]:
+    """Return account ids whose stored number matches after digit cleanup."""
+
+    normalized_account_number = normalize_account_digits(account_number)
+    if not normalized_account_number:
+        return []
+
+    with connect_database(paths) as conn:
+        rows = conn.execute(
+            """
+            select account_id, account_number
+            from accounts
+            order by account_id
+            """
+        ).fetchall()
+
+    return [
+        int(row["account_id"])
+        for row in rows
+        if normalize_account_digits(row["account_number"])
+        == normalized_account_number
+    ]
+
+
+def resolve_account_last4(paths: AppPaths, account_last4: str) -> int:
+    """Resolve an account suffix to one configured account id."""
+
+    suffix = normalize_account_digits(account_last4)
+    if len(suffix) != 4:
+        raise TransactionFilterError(
+            "Account last four digits must contain exactly four digits."
+        )
+
+    with connect_database(paths) as conn:
+        rows = conn.execute(
+            """
+            select account_id, account_number
+            from accounts
+            order by account_id
+            """
+        ).fetchall()
+
+    matches = [
+        int(row["account_id"])
+        for row in rows
+        if normalize_account_digits(row["account_number"]).endswith(suffix)
+    ]
+    if not matches:
+        raise TransactionFilterError(
+            f"No account matches last four digits: {suffix}."
+        )
+    if len(matches) > 1:
+        raise TransactionFilterError(
+            "Account last four digits are ambiguous: "
+            f"{suffix}. Use --account-id or --account-number."
+        )
+    return matches[0]
+
+
+def add_account_id_filter(
+    conditions: list[str],
+    parameters: list[object],
+    account_ids: list[int],
+) -> None:
+    """Append a transaction account-id condition for resolved accounts."""
+
+    if not account_ids:
+        conditions.append("1 = 0")
+        return
+
+    placeholders = ", ".join("?" for _account_id in account_ids)
+    conditions.append(f"transactions.account_id in ({placeholders})")
+    parameters.extend(account_ids)
+
+
+def normalize_account_digits(value: str) -> str:
+    """Return only the digits from a user-entered account number."""
+
+    return "".join(char for char in value if char.isdigit())
 
 
 def parse_sort_expression(
