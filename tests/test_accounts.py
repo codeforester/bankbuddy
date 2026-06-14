@@ -1,7 +1,10 @@
 import pytest
 
 from bankbuddy import accounts
+from bankbuddy.accounts import add_account
 from bankbuddy.accounts import masked_account_number
+from bankbuddy.database import connect_database
+from bankbuddy.paths import resolve_app_paths
 
 
 def test_masked_account_number_shows_only_suffix() -> None:
@@ -30,3 +33,74 @@ def test_normalize_country_code_accepts_supported_aliases(
 def test_normalize_country_code_rejects_unknown_values() -> None:
     with pytest.raises(ValueError, match="Unsupported country"):
         accounts.normalize_country_code("Atlantis")
+
+
+def test_list_account_summaries_includes_latest_balance_source(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path)
+    account = add_account(
+        paths,
+        bank_name="ICICI Bank",
+        country="IN",
+        account_number="166601075148",
+        account_type="savings",
+        currency="INR",
+        display_name="ICICI Joint NRO",
+    )
+    with connect_database(paths) as conn:
+        cursor = conn.execute(
+            """
+            insert into import_files (
+                file_name,
+                file_hash,
+                canonical_file_name,
+                processed_path
+            ) values (?, ?, ?, ?)
+            """,
+            (
+                "ICICI NRO 2025.xls",
+                "hash",
+                "icici-bank_5148_2025-01-01_2025-12-31.xls",
+                "processed/icici-bank/2025/12/"
+                "icici-bank_5148_2025-01-01_2025-12-31.xls",
+            ),
+        )
+        conn.execute(
+            """
+            update accounts
+            set latest_balance_minor_units = ?,
+                latest_balance_currency = ?,
+                latest_balance_as_of_date = ?,
+                latest_balance_source_file_id = ?
+            where account_id = ?
+            """,
+            (
+                2405025,
+                "INR",
+                "2025-12-31",
+                cursor.lastrowid,
+                account.account_id,
+            ),
+        )
+        conn.commit()
+
+    summaries = accounts.list_account_summaries(paths)
+
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary.account_id == account.account_id
+    assert summary.bank_name == "ICICI Bank"
+    assert summary.display_name == "ICICI Joint NRO"
+    assert summary.latest_balance_minor_units == 2405025
+    assert summary.latest_balance_currency == "INR"
+    assert summary.latest_balance_as_of_date == "2025-12-31"
+    assert summary.latest_balance_source_file_id == cursor.lastrowid
+    assert (
+        summary.latest_balance_source
+        == "icici-bank_5148_2025-01-01_2025-12-31.xls"
+    )
+
+
+def test_get_account_summary_returns_none_for_missing_account(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path)
+
+    assert accounts.get_account_summary(paths, account_id=999) is None

@@ -36,6 +36,8 @@ bankbuddy account add \
   --type savings \
   --currency INR
 bankbuddy account list
+bankbuddy account summary
+bankbuddy account show 1
 bankbuddy import --dry-run --file path/to/boa.pdf --account-id 1
 bankbuddy import --file path/to/boa.pdf --account-id 1
 bankbuddy import --dry-run --file path/to/icici.xls --account-id 2

@@ -23,6 +23,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy account summary` and `bankbuddy account show` for reviewing
+  configured accounts, masked account numbers, and latest statement-derived
+  balance snapshots with source file metadata.
 - Added ICICI Bank `.xls` statement imports with INR transactions, value-date
   storage, row-balance sanity checks, inbox account auto-routing, and
   account-level latest balance snapshots with source file provenance.
