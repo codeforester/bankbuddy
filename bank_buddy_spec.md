@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.17
+**Version:** 1.18
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.18: Added `tx list --format pretty|csv|tsv`, made aligned `pretty`
+  output the default, and kept CSV/TSV transaction output to clean rectangular
+  rows without JSON or YAML.
 - v1.17: Added `tx list --sort`, `--order`, `--view`, and `--summary` so
   transaction review can order rows, switch human-readable layouts, and print
   per-currency totals for the filtered result set.
@@ -603,6 +606,7 @@ bankbuddy tx list --direction credit
 bankbuddy tx list --sort FIELD[:asc|desc],FIELD[:asc|desc]
 bankbuddy tx list --sort FIELD --order asc|desc
 bankbuddy tx list --view default|compact|ledger
+bankbuddy tx list --format pretty|csv|tsv
 bankbuddy tx list --summary
 bankbuddy tx categorize TX_ID CATEGORY
 ```
@@ -621,6 +625,12 @@ fields without an explicit direction. The default order remains
 shows a narrower date/amount/currency/description table, and `--view ledger`
 adds a debit/credit type column. `tx list --summary` prints transaction count,
 debits, credits, and net totals grouped by currency for the same filtered rows.
+
+`tx list --format pretty` is the default and renders aligned columns for human
+reading. `--format csv` and `--format tsv` use the selected `--view` columns
+with lowercase stable headers for machine-readable output. `--summary` is only
+supported with `--format pretty`; CSV and TSV intentionally remain one clean
+transaction table. JSON and YAML are out of scope for transaction listing.
 
 Later transaction commands and filters:
 

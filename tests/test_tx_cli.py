@@ -40,11 +40,13 @@ def test_tx_list_outputs_imported_transactions(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "ID  Date  Account  Amount  Currency  Description" in result.output
-    assert "1  2026-06-10  Everyday Checking  -4.25  USD  COFFEE SHOP" in (
+    assert "ID | Date       | Account" in result.output
+    assert "---+" in result.output
+    assert "ID  Date" not in result.output
+    assert " 1 | 2026-06-10 | Everyday Checking |   -4.25 | USD" in (
         result.output
     )
-    assert "2  2026-06-11  Everyday Checking  2500.00  USD  PAYROLL" in (
+    assert " 2 | 2026-06-11 | Everyday Checking | 2500.00 | USD" in (
         result.output
     )
     assert "123456789" not in result.output
@@ -150,8 +152,8 @@ def test_tx_list_outputs_compact_view(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Date  Amount  Currency  Description" in result.output
-    assert "2026-06-10  -4.25  USD  COFFEE SHOP" in result.output
+    assert "Date       |  Amount | Currency | Description" in result.output
+    assert "2026-06-10 |   -4.25 | USD" in result.output
     assert "Everyday Checking" not in result.output
 
 
@@ -165,11 +167,12 @@ def test_tx_list_outputs_ledger_view(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "ID  Date  Account  Type  Amount  Currency  Description" in result.output
-    assert "1  2026-06-10  Everyday Checking  debit  -4.25  USD  COFFEE SHOP" in (
+    assert "ID | Date       | Account" in result.output
+    assert "Type   |  Amount | Currency | Description" in result.output
+    assert " 1 | 2026-06-10 | Everyday Checking | debit" in (
         result.output
     )
-    assert "2  2026-06-11  Everyday Checking  credit  2500.00  USD  PAYROLL" in (
+    assert " 2 | 2026-06-11 | Everyday Checking | credit | 2500.00" in (
         result.output
     )
 
@@ -201,6 +204,53 @@ def test_tx_list_summary_respects_direction_filter(tmp_path) -> None:
     assert result.exit_code == 0
     assert "USD  1  -4.25  0.00  -4.25" in result.output
     assert "PAYROLL" not in result.output
+
+
+def test_tx_list_outputs_csv_format(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--format", "csv"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert result.output.splitlines() == [
+        "id,date,account,amount,currency,description",
+        "1,2026-06-10,Everyday Checking,-4.25,USD,COFFEE SHOP",
+        "2,2026-06-11,Everyday Checking,2500.00,USD,PAYROLL",
+    ]
+
+
+def test_tx_list_outputs_tsv_format_with_ledger_view(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--view", "ledger", "--format", "tsv"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert result.output.splitlines() == [
+        "id\tdate\taccount\ttype\tamount\tcurrency\tdescription",
+        "1\t2026-06-10\tEveryday Checking\tdebit\t-4.25\tUSD\tCOFFEE SHOP",
+        "2\t2026-06-11\tEveryday Checking\tcredit\t2500.00\tUSD\tPAYROLL",
+    ]
+
+
+def test_tx_list_rejects_summary_for_csv_format(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--format", "csv", "--summary"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code != 0
+    assert "--summary is only supported with --format pretty" in result.output
 
 
 def test_tx_list_reports_empty_state(tmp_path) -> None:

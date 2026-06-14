@@ -16,7 +16,7 @@
 - Modify: `tests/test_tx_cli.py`
 - Modify: `src/bankbuddy/cli.py`
 
-- [ ] **Step 1: Write failing pretty-output tests**
+- [x] **Step 1: Write failing pretty-output tests**
 
 Add tests that assert default output uses aligned columns with a separator line and no longer emits the old double-space debug table:
 
@@ -30,20 +30,20 @@ result = CliRunner().invoke(
 assert "ID  Date" not in result.output
 assert "ID | Date       | Account" in result.output
 assert "---+" in result.output
-assert " 1 | 2026-06-10 | Everyday Checking |  -4.25 | USD" in result.output
+assert " 1 | 2026-06-10 | Everyday Checking |   -4.25 | USD" in result.output
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `uv run pytest tests/test_tx_cli.py -q`
 
 Expected: failure because pretty rendering is still the old double-space table.
 
-- [ ] **Step 3: Implement minimal pretty renderer**
+- [x] **Step 3: Implement minimal pretty renderer**
 
-Add a `TransactionColumn` dataclass in `src/bankbuddy/cli.py` with `header`, `align`, and `value` fields. Add `transaction_columns(view)` and `render_pretty_rows(rows, columns)` helpers. Make `render_transaction_rows(..., output_format="pretty")` use aligned columns and a separator row.
+Add a `TransactionColumn` dataclass in `src/bankbuddy/cli.py` with `header`, `machine_header`, `align`, and `value` fields. Add `transaction_columns(view)` and `render_pretty_rows(rows, columns)` helpers. Make `render_transaction_rows(..., output_format="pretty")` use aligned columns and a separator row.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run: `uv run pytest tests/test_tx_cli.py -q`
 
@@ -55,7 +55,7 @@ Expected: transaction CLI tests pass after updating existing assertions to the p
 - Modify: `tests/test_tx_cli.py`
 - Modify: `src/bankbuddy/cli.py`
 
-- [ ] **Step 1: Write failing format tests**
+- [x] **Step 1: Write failing format tests**
 
 Add CSV and TSV tests:
 
@@ -79,13 +79,13 @@ assert result.output.splitlines()[0] == "id\tdate\taccount\ttype\tamount\tcurren
 assert "1\t2026-06-10\tEveryday Checking\tdebit\t-4.25\tUSD\tCOFFEE SHOP" in result.output
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `uv run pytest tests/test_tx_cli.py -q`
 
 Expected: failure because `--format` is unknown.
 
-- [ ] **Step 3: Implement CSV/TSV rendering**
+- [x] **Step 3: Implement CSV/TSV rendering**
 
 Add:
 
@@ -102,7 +102,7 @@ Add:
 
 Use `csv.writer` with delimiter `,` for CSV and `\t` for TSV. Use lowercase machine headers from the same column definitions that drive pretty output.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run: `uv run pytest tests/test_tx_cli.py -q`
 
@@ -117,7 +117,7 @@ Expected: transaction CLI tests pass.
 - Modify: `CHANGELOG.md`
 - Modify: `bank_buddy_spec.md`
 
-- [ ] **Step 1: Write failing summary-format test**
+- [x] **Step 1: Write failing summary-format test**
 
 Add:
 
@@ -131,17 +131,17 @@ assert result.exit_code != 0
 assert "--summary is only supported with --format pretty" in result.output
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `uv run pytest tests/test_tx_cli.py -q`
 
 Expected: failure because `--format` is unknown or summary is not rejected.
 
-- [ ] **Step 3: Implement validation and docs**
+- [x] **Step 3: Implement validation and docs**
 
 Reject `--summary` when `output_format` is `csv` or `tsv` before querying output. Update README examples, CHANGELOG, and `bank_buddy_spec.md` version/changelog/transaction command docs.
 
-- [ ] **Step 4: Verify feature and full suite**
+- [x] **Step 4: Verify feature and full suite**
 
 Run:
 
