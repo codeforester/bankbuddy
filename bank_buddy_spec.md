@@ -1,11 +1,16 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.21
+**Version:** 1.22
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.22: Added ICICI Bank `.xls` statement import as the first INR bank parser.
+  ICICI imports use the spreadsheet account number for validation/routing, store
+  transaction value dates, use row balances for sanity checks, and update an
+  account-level latest balance snapshot with source file provenance. Full
+  statement/transaction balance history remains future work.
 - v1.21: Added `statements summary` and `statements list` for read-only
   imported statement-file inventory by bank, account, year, and month. The
   inventory view is separate from coverage auditing and uses successful import
@@ -186,7 +191,8 @@ simple `export BANKBUDDY_ENV=prod` or `export BANKBUDDY_ENV=dev`.
 | Migrations | Small SQL migration runner or lightweight Python migration layer |
 | Phase 1 BOA PDF parsing | `pdfplumber` for text-selectable PDFs |
 | Phase 1 CSV fallback parsing | Python `csv` module |
-| Later spreadsheet parsing | `openpyxl` or `pandas` only when needed |
+| ICICI old Excel parsing | `xlrd` for `.xls` statement exports |
+| Later `.xlsx` spreadsheet parsing | `openpyxl` or `pandas` only when needed |
 | Later PDF parsing | OCR or bank-specific PDF hardening after sample PDFs are validated |
 | Categorization | Rule-based first, `scikit-learn` later |
 | File watching | `watchdog` in a later automation phase |
@@ -197,15 +203,21 @@ simple `export BANKBUDDY_ENV=prod` or `export BANKBUDDY_ENV=dev`.
 
 ## 3. Supported Banks & Currencies
 
-### Phase 1 Parser
+### Current Parsers
 
 - Bank of America (USA) — text-selectable PDF statement
 - Bank of America (USA) — CSV export fallback when available
+- ICICI Bank (India) — old Excel `.xls` statement export
 
-Phase 1 intentionally supports one bank first. The primary import path is a
-text-selectable Bank of America PDF statement because CSV export may not be
-available for every account flow. CSV remains supported when available, but OCR,
-password-protected PDFs, and broad PDF layout support are later work.
+The first implementation intentionally started with one bank. The Bank of
+America primary import path is a text-selectable PDF statement because CSV
+export may not be available for every account flow. CSV remains supported when
+available, but OCR, password-protected PDFs, and broad PDF layout support are
+later work.
+ICICI `.xls` support is the first INR parser because the spreadsheet contains
+reliable table columns, full account metadata, value dates, transaction dates,
+withdrawal/deposit amounts, and running balances. ICICI PDFs remain archival
+reference input until a separate parser is justified.
 
 ### Later Banks
 
@@ -218,9 +230,9 @@ password-protected PDFs, and broad PDF layout support are later work.
 - Future: Additional currencies can be added
 
 Multi-currency support means the schema, import normalization, reports, and
-budgets always carry a currency code. It does not mean every bank parser exists
-in Phase 1. Bank of America PDF and CSV imports produce USD transactions first;
-HDFC and ICICI add INR statement parsing in a later phase.
+budgets always carry a currency code. Bank of America PDF and CSV imports
+produce USD transactions. ICICI `.xls` imports produce INR transactions. HDFC
+and other Indian bank parsers remain later work.
 
 No cross-currency consolidation happens in early phases. Budgets and reports are
 per-currency unless a later design explicitly adds conversion.
@@ -300,6 +312,10 @@ is needed.
 | `currency` | TEXT NOT NULL | ISO code |
 | `statement_account_ref` | TEXT | Optional parser-visible reference such as masked number or last four |
 | `display_name` | TEXT | Optional user-friendly account label |
+| `latest_balance_minor_units` | INTEGER | Latest statement-derived account balance snapshot |
+| `latest_balance_currency` | TEXT | ISO code for the latest balance |
+| `latest_balance_as_of_date` | DATE | Statement date the latest balance is good as of |
+| `latest_balance_source_file_id` | INTEGER FK | Import file that supplied the latest balance |
 | `created_at` | DATETIME NOT NULL | |
 | `updated_at` | DATETIME NOT NULL | |
 
@@ -313,6 +329,12 @@ Bank Buddy stores the actual account number so account identity is unambiguous.
 If a statement exposes only a masked number or last-four value, the import flow
 must map that parser-visible value to a configured account rather than storing
 the masked value as the account number.
+
+The latest balance fields are a convenience snapshot, not a complete balance
+history and not a live bank balance. They are updated only from successful
+imports whose statement balance date is at least as current as the stored
+snapshot. Historical `statement_balances` or per-row `transaction_balances`
+belong to the separate balance-history design.
 
 ### 5.3 `categories`
 
@@ -354,6 +376,7 @@ Built-in seed categories:
 | `category_id` | INTEGER FK | Defaults to Uncategorized |
 | `file_id` | INTEGER FK | References `import_files.file_id` |
 | `transaction_date` | DATE NOT NULL | |
+| `value_date` | DATE | Optional bank-provided value date |
 | `amount_minor_units` | INTEGER NOT NULL | Positive = credit, negative = debit |
 | `currency` | TEXT NOT NULL | ISO code |
 | `description` | TEXT NOT NULL | Transaction remark from bank |
@@ -484,10 +507,12 @@ duplicates of prior successful imports are detected by SHA-256 hash before
 parser work, recorded as `duplicate` attempts, and moved to `duplicates/` as a
 temporary conservative preservation policy. Bank of America PDFs can be
 auto-routed by full statement account number when it matches exactly one
-configured BOA USD account. CSV inbox imports still require an explicit account
-id until a supported CSV format provides reliable account metadata, except when
-the CSV file is an exact duplicate of a prior successful import. Automatic
-watching comes later.
+configured BOA USD account. ICICI `.xls` files can be auto-routed by full
+statement account number when it matches exactly one configured ICICI INR
+account. CSV inbox imports still require an explicit account id until a
+supported CSV format provides reliable account metadata, except when the CSV
+file is an exact duplicate of a prior successful import. Automatic watching
+comes later.
 
 All explicit-file and inbox imports can run with `--dry-run`. Dry-run mode
 uses the same parser, account validation, transaction hashing, duplicate
@@ -511,7 +536,8 @@ processed files, duplicate files, or remove inbox files.
 5. Infer bank, account reference, and statement period from parser-specific
    signals. Bank of America PDFs support both `Statement Period: ... through
    ...` headers and account header lines shaped like `for ... to ... Account
-   number`.
+   number`. ICICI `.xls` imports use spreadsheet account, statement period,
+   value date, transaction date, withdrawal/deposit, and balance columns.
 6. Parse into staged transactions.
 7. For PDF imports, validate that the full account number in the statement
    matches the selected configured account.
@@ -535,7 +561,11 @@ processed files, duplicate files, or remove inbox files.
 13. Skip existing transaction hashes and count them in the summary.
 14. Apply deterministic category rules.
 15. Commit new valid transactions in one database transaction.
-16. Finish the import attempt with row counts and any warnings.
+16. When the parser exposes a statement closing balance, update the account's
+    latest-balance snapshot with balance amount, currency, as-of date, and
+    source file id if the statement is at least as current as the stored
+    snapshot.
+17. Finish the import attempt with row counts and any warnings.
 
 On failure before commit, no transaction rows are written and the file remains
 in place. The failed attempt is recorded and can be retried. Retry reuses the
@@ -722,8 +752,10 @@ account's imported coverage range.
 
 The initial account selectors are `--account-id` and `--account-last4`.
 `--account-last4` must resolve to exactly one configured account. Balance
-reconciliation and missing-transaction inference are out of scope until
-statement balances are parsed and stored.
+reconciliation and missing-transaction inference beyond parser-local row
+balance checks are out of scope until statement balance history is designed and
+stored. The account-level latest balance snapshot is useful for orientation,
+but it is not enough by itself for historical reconciliation.
 
 ### Reporting Commands
 
@@ -914,9 +946,10 @@ Cloud sync and automated backup are out of scope for early phases.
 - inbox scanning with BOA PDF account auto-routing
 - account setup/list commands
 - retry failed imports
+- ICICI `.xls` statement parser with INR transactions and latest balance snapshot
 - HDFC and ICICI PDF parser spikes using real samples
 - interactive PDF password prompt
-- INR import path through Indian bank parsers
+- additional INR import paths through Indian bank parsers
 - transfer candidate detection
 
 ### Phase 3 — Categorization and Budgets

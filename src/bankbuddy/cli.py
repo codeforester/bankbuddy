@@ -35,8 +35,10 @@ from bankbuddy.imports import ImportPlan
 from bankbuddy.imports import ImportSummary
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
+from bankbuddy.imports import import_icici_xls
 from bankbuddy.imports import plan_boa_csv_import
 from bankbuddy.imports import plan_boa_pdf_import
+from bankbuddy.imports import plan_icici_xls_import
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.repairs import BofaPdfRepairFileResult
 from bankbuddy.repairs import BofaPdfRepairSummary
@@ -1480,6 +1482,21 @@ def run_statement_import(
                     account_id=account_id,
                     logger=runtime.log,
                 )
+        elif file_path.suffix.lower() == ".xls":
+            if dry_run:
+                plan = plan_icici_xls_import(
+                    paths,
+                    file_path,
+                    account_id=account_id,
+                    logger=runtime.log,
+                )
+            else:
+                summary = import_icici_xls(
+                    paths,
+                    file_path,
+                    account_id=account_id,
+                    logger=runtime.log,
+                )
         else:
             raise ImportFailure(
                 f"Unsupported import file type: {file_path.suffix or '(none)'}"
@@ -1553,6 +1570,17 @@ def print_import_summary(summary: ImportSummary) -> None:
     click.echo(f"Rows parsed: {summary.rows_parsed}")
     click.echo(f"Rows imported: {summary.rows_imported}")
     click.echo(f"Duplicate rows skipped: {summary.rows_skipped_duplicate}")
+    if (
+        summary.latest_balance_minor_units is not None
+        and summary.latest_balance_currency is not None
+        and summary.latest_balance_as_of_date is not None
+    ):
+        click.echo(
+            "Latest balance: "
+            f"{summary.latest_balance_currency} "
+            f"{format_minor_units(summary.latest_balance_minor_units)} "
+            f"as of {summary.latest_balance_as_of_date}"
+        )
 
 
 def print_import_plan(plan: ImportPlan) -> None:
@@ -1565,6 +1593,17 @@ def print_import_plan(plan: ImportPlan) -> None:
     click.echo(f"Rows that would be imported: {plan.rows_would_import}")
     click.echo(f"Rows already present: {plan.rows_already_present}")
     click.echo(f"Processed path: {plan.processed_path}")
+    if (
+        plan.latest_balance_minor_units is not None
+        and plan.latest_balance_currency is not None
+        and plan.latest_balance_as_of_date is not None
+    ):
+        click.echo(
+            "Latest balance: "
+            f"{plan.latest_balance_currency} "
+            f"{format_minor_units(plan.latest_balance_minor_units)} "
+            f"as of {plan.latest_balance_as_of_date}"
+        )
     click.echo("Database changed: no")
     click.echo("Files changed: none")
 

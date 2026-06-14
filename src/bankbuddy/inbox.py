@@ -84,7 +84,7 @@ def import_inbox(
     results: list[InboxFileResult] = []
     for inbox_file in iter_inbox_files(paths):
         suffix = inbox_file.suffix.lower()
-        if suffix not in {".csv", ".pdf"}:
+        if suffix not in {".csv", ".pdf", ".xls"}:
             results.append(
                 InboxFileResult(
                     file_name=inbox_file.name,
@@ -165,7 +165,7 @@ def import_inbox(
                         account_id=account_id,
                         logger=logger,
                     )
-            else:
+            elif suffix == ".pdf":
                 resolved_account_id = account_id
                 extracted_text: str | None = None
                 if resolved_account_id is None:
@@ -210,6 +210,52 @@ def import_inbox(
                         inbox_file,
                         account_id=resolved_account_id,
                         extracted_text=extracted_text,
+                        logger=logger,
+                    )
+            else:
+                parsed_statement = statement_imports.parse_icici_xls(inbox_file)
+                resolved_account_id = account_id
+                if resolved_account_id is None:
+                    resolved_account_id = account_id_for_parsed_statement(
+                        paths,
+                        parsed_statement,
+                    )
+                    if resolved_account_id is None:
+                        account_suffix = statement_imports.account_number_suffix(
+                            parsed_statement.account_number
+                        )
+                        message = (
+                            "No configured account matches "
+                            f"{parsed_statement.bank_name} XLS account ending "
+                            f"{account_suffix}."
+                        )
+                        if not dry_run:
+                            statement_imports.record_failed_import(
+                                paths,
+                                inbox_file,
+                                source_format=statement_imports.ICICI_SOURCE_FORMAT,
+                                error_message=message,
+                            )
+                        raise ImportFailure(message)
+
+                if dry_run:
+                    import_result = statement_imports.plan_parsed_statement_import(
+                        paths,
+                        inbox_file,
+                        account_id=resolved_account_id,
+                        parsed_statement=parsed_statement,
+                        source_format=statement_imports.ICICI_SOURCE_FORMAT,
+                        import_label="XLS",
+                        logger=logger,
+                    )
+                else:
+                    import_result = statement_imports.import_parsed_statement(
+                        paths,
+                        inbox_file,
+                        account_id=resolved_account_id,
+                        parsed_statement=parsed_statement,
+                        source_format=statement_imports.ICICI_SOURCE_FORMAT,
+                        import_label="XLS",
                         logger=logger,
                     )
         except ImportFailure as exc:
@@ -263,6 +309,41 @@ def account_id_for_boa_pdf_account_number(
             order by accounts.account_id
             """,
             ("Bank of America", "USD"),
+        ).fetchall()
+
+    matches = [
+        int(row["account_id"])
+        for row in rows
+        if statement_imports.normalize_account_number(row["account_number"])
+        == normalized_account_number
+    ]
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def account_id_for_parsed_statement(
+    paths: AppPaths,
+    parsed_statement: statement_imports.ParsedStatement,
+) -> int | None:
+    """Return the configured account id matching parsed statement metadata."""
+
+    normalized_account_number = statement_imports.normalize_account_number(
+        parsed_statement.account_number
+    )
+    with connect_database(paths) as conn:
+        rows = conn.execute(
+            """
+            select
+                accounts.account_id,
+                accounts.account_number
+            from accounts
+            join banks using (bank_id)
+            where banks.bank_name = ?
+              and accounts.currency = ?
+            order by accounts.account_id
+            """,
+            (parsed_statement.bank_name, parsed_statement.currency),
         ).fetchall()
 
     matches = [

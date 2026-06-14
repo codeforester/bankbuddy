@@ -1,5 +1,6 @@
 from click.testing import CliRunner
 
+import bankbuddy.imports as imports
 from bankbuddy.cli import main
 from bankbuddy.database import connect_database
 from bankbuddy.paths import resolve_app_paths
@@ -19,6 +20,39 @@ Date Description Amount Balance
 06/10 COFFEE SHOP -4.25 100.00
 06/11 PAYROLL 2,500.00 2,600.00
 """
+
+ICICI_XLS_ROWS = [
+    ["ICICI Bank"],
+    ["Statement for Account Number", "1234 5678 9012"],
+    ["Statement Period", "01/04/2025", "to", "30/04/2025"],
+    [
+        "Value Date",
+        "Transaction Date",
+        "Cheque Number",
+        "Transaction Remarks",
+        "Withdrawal Amount(INR)",
+        "Deposit Amount(INR)",
+        "Balance(INR)",
+    ],
+    [
+        "01/04/2025",
+        "02/04/2025",
+        "",
+        "ATM CASH WITHDRAWAL",
+        "1,000.00",
+        "",
+        "24,000.00",
+    ],
+    [
+        "30/04/2025",
+        "30/04/2025",
+        "123456",
+        "INTEREST CREDIT",
+        "",
+        "50.25",
+        "24,050.25",
+    ],
+]
 
 
 def test_import_file_command_reports_summary(tmp_path) -> None:
@@ -183,6 +217,69 @@ def test_import_file_dry_run_reports_existing_rows_without_new_attempt(tmp_path)
         assert conn.execute("select count(*) from import_attempts").fetchone()[0] == 1
 
 
+def test_import_file_dry_run_reports_icici_xls_latest_balance(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    xls_path = tmp_path / "icici.xls"
+    xls_path.write_bytes(b"synthetic xls placeholder")
+    runner = CliRunner()
+    home = tmp_path / "home"
+    env = {"BANKBUDDY_HOME": str(home)}
+    monkeypatch.setattr(
+        imports,
+        "parse_icici_xls",
+        lambda _path: imports.parse_icici_xls_rows(ICICI_XLS_ROWS),
+    )
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "ICICI Bank",
+            "--country",
+            "India",
+            "--account-number",
+            "123456789012",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(
+        main,
+        ["import", "--dry-run", "--file", str(xls_path), "--account-id", "1"],
+        env=env,
+    )
+
+    assert result.exit_code == 0
+    assert "Dry run: yes" in result.output
+    assert "Bank: ICICI Bank | Account ID: 1" in result.output
+    assert "Rows parsed: 2" in result.output
+    assert "Rows that would be imported: 2" in result.output
+    assert (
+        "Processed path: processed/icici-bank/2025/04/"
+        "icici-bank_9012_2025-04-01_2025-04-30.xls"
+    ) in result.output
+    assert "Latest balance: INR 24050.25 as of 2025-04-30" in result.output
+    assert "Database changed: no" in result.output
+    with connect_database(resolve_app_paths(home)) as conn:
+        account_row = conn.execute(
+            """
+            select latest_balance_minor_units, latest_balance_source_file_id
+            from accounts
+            where account_id = 1
+            """
+        ).fetchone()
+        assert account_row["latest_balance_minor_units"] is None
+        assert account_row["latest_balance_source_file_id"] is None
+        assert conn.execute("select count(*) from import_files").fetchone()[0] == 0
+
+
 def test_import_file_dry_run_parse_failure_does_not_record_attempt(tmp_path) -> None:
     csv_path = tmp_path / "boa.csv"
     csv_path.write_text("Date,Description\n06/10/2026,COFFEE SHOP\n", encoding="utf-8")
@@ -302,6 +399,55 @@ def test_import_inbox_command_dry_run_reports_plan_without_removing_source(
         assert conn.execute("select count(*) from transactions").fetchone()[0] == 0
         assert conn.execute("select count(*) from import_files").fetchone()[0] == 0
         assert conn.execute("select count(*) from import_attempts").fetchone()[0] == 0
+
+
+def test_import_inbox_command_dry_run_routes_icici_xls_by_account_number(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    runner = CliRunner()
+    home = tmp_path / "home"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    inbox_file = inbox / "icici-statement.xls"
+    inbox_file.write_bytes(b"synthetic xls placeholder")
+    env = {"BANKBUDDY_HOME": str(home)}
+    monkeypatch.setattr(
+        imports,
+        "parse_icici_xls",
+        lambda _path: imports.parse_icici_xls_rows(ICICI_XLS_ROWS),
+    )
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "ICICI Bank",
+            "--country",
+            "India",
+            "--account-number",
+            "123456789012",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(main, ["import", "inbox", "--dry-run"], env=env)
+
+    assert result.exit_code == 0
+    assert "Dry run: yes" in result.output
+    assert "Inbox files: 1" in result.output
+    assert "Planned imports: 1" in result.output
+    assert (
+        "would-import  icici-statement.xls  parsed=2 would-import=2 duplicates=0  "
+        "canonical=processed/icici-bank/2025/04/"
+        "icici-bank_9012_2025-04-01_2025-04-30.xls"
+    ) in result.output
+    assert inbox_file.is_file()
 
 
 def test_import_inbox_command_reports_duplicate_file(tmp_path) -> None:

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Sequence
 from dataclasses import dataclass
+from dataclasses import replace
 from datetime import date, datetime
 from hashlib import sha256
 import logging
@@ -33,6 +35,22 @@ class ParsedTransaction:
     normalized_description: str
     check_number: str | None
     source_row_key: str
+    value_date: str | None = None
+    balance_after_minor_units: int | None = None
+
+
+@dataclass(frozen=True)
+class ParsedStatement:
+    """A normalized statement staged from an import file."""
+
+    bank_name: str
+    account_number: str
+    currency: str
+    statement_start_date: str
+    statement_end_date: str
+    transactions: list[ParsedTransaction]
+    latest_balance_minor_units: int | None = None
+    latest_balance_as_of_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +63,9 @@ class ImportSummary:
     rows_parsed: int
     rows_imported: int
     rows_skipped_duplicate: int
+    latest_balance_minor_units: int | None = None
+    latest_balance_currency: str | None = None
+    latest_balance_as_of_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +80,9 @@ class ImportPlan:
     rows_already_present: int
     canonical_file_name: str
     processed_path: str
+    latest_balance_minor_units: int | None = None
+    latest_balance_currency: str | None = None
+    latest_balance_as_of_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +139,39 @@ BOA_STATEMENT_PERIOD_PATTERNS = (
     BOA_COMBINED_STATEMENT_PERIOD_PATTERN,
     BOA_LEGACY_ACCOUNT_HEADER_PERIOD_PATTERN,
 )
+ICICI_BANK_NAME = "ICICI Bank"
+ICICI_SOURCE_FORMAT = "icici_xls"
+ICICI_ACCOUNT_NUMBER_PATTERN = re.compile(
+    r"\b(?:account|acct|a/c)\s*(?:number|no\.?|#)?\s*[:#-]?\s*"
+    r"((?:\d[\s-]*){6,})",
+    re.IGNORECASE,
+)
+ICICI_DATE_TOKEN_PATTERN = re.compile(
+    r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"
+    r"|\b\d{1,2}-[A-Za-z]{3,9}-\d{2,4}\b"
+)
+ICICI_HEADER_ALIASES = {
+    "valuedate": "value_date",
+    "transactiondate": "transaction_date",
+    "chequenumber": "check_number",
+    "chqno": "check_number",
+    "transactionremarks": "description",
+    "remarks": "description",
+    "withdrawalamountinr": "withdrawal",
+    "withdrawal": "withdrawal",
+    "depositamountinr": "deposit",
+    "deposit": "deposit",
+    "balanceinr": "balance",
+    "balance": "balance",
+}
+ICICI_REQUIRED_FIELDS = {
+    "value_date",
+    "transaction_date",
+    "description",
+    "withdrawal",
+    "deposit",
+    "balance",
+}
 
 
 def parse_boa_csv(csv_path: Path) -> list[ParsedTransaction]:
@@ -147,6 +204,164 @@ def parse_boa_csv(csv_path: Path) -> list[ParsedTransaction]:
                 )
             )
     return parsed_rows
+
+
+def parse_icici_xls(xls_path: Path) -> ParsedStatement:
+    """Parse an ICICI Bank old-format Excel export into a normalized statement."""
+
+    try:
+        import xlrd
+    except ImportError as exc:
+        raise ImportFailure("ICICI XLS import requires the xlrd package.") from exc
+
+    try:
+        workbook = xlrd.open_workbook(str(xls_path))
+    except Exception as exc:
+        raise ImportFailure(f"Unable to read ICICI XLS file: {xls_path}") from exc
+
+    errors: list[str] = []
+    for sheet in workbook.sheets():
+        rows = xls_sheet_rows(sheet, datemode=workbook.datemode, xlrd_module=xlrd)
+        try:
+            return parse_icici_xls_rows(rows)
+        except ImportFailure as exc:
+            errors.append(str(exc))
+
+    detail = errors[-1] if errors else "workbook has no sheets"
+    raise ImportFailure(f"ICICI XLS could not be parsed: {detail}")
+
+
+def xls_sheet_rows(sheet, *, datemode: int, xlrd_module) -> list[list[object]]:
+    """Return sheet rows with Excel date cells converted to dates."""
+
+    rows: list[list[object]] = []
+    for row_index in range(sheet.nrows):
+        row_values: list[object] = []
+        for col_index in range(sheet.ncols):
+            cell = sheet.cell(row_index, col_index)
+            if cell.ctype == xlrd_module.XL_CELL_DATE:
+                row_values.append(
+                    xlrd_module.xldate_as_datetime(cell.value, datemode).date()
+                )
+            else:
+                row_values.append(cell.value)
+        rows.append(row_values)
+    return rows
+
+
+def parse_icici_xls_rows(rows: Sequence[Sequence[object]]) -> ParsedStatement:
+    """Parse normalized ICICI worksheet rows into statement metadata and rows."""
+
+    normalized_rows = [
+        [cell_to_text(cell) for cell in row]
+        for row in rows
+    ]
+    header_index, columns = find_icici_header(normalized_rows)
+    account_number = extract_icici_account_number(normalized_rows[:header_index])
+    parsed_rows: list[ParsedTransaction] = []
+    previous_balance: int | None = None
+
+    for source_row_number, row in enumerate(
+        normalized_rows[header_index + 1 :],
+        start=header_index + 2,
+    ):
+        if is_empty_row(row):
+            continue
+        transaction_date_text = cell_at(row, columns["transaction_date"])
+        value_date_text = cell_at(row, columns["value_date"])
+        description = cell_at(row, columns["description"])
+        withdrawal_text = cell_at(row, columns["withdrawal"])
+        deposit_text = cell_at(row, columns["deposit"])
+        balance_text = cell_at(row, columns["balance"])
+        if not transaction_date_text and not description:
+            continue
+        if (
+            not transaction_date_text
+            and not value_date_text
+            and description
+            and not withdrawal_text
+            and not deposit_text
+            and not balance_text
+        ):
+            if not parsed_rows:
+                raise ImportFailure(
+                    "ICICI XLS has a description continuation before any "
+                    f"transaction at row {source_row_number}."
+                )
+            previous = parsed_rows[-1]
+            continued_description = f"{previous.description} {description}"
+            parsed_rows[-1] = replace(
+                previous,
+                description=continued_description,
+                normalized_description=normalize_description(continued_description),
+                source_row_key=f"{previous.source_row_key},{source_row_number}",
+            )
+            continue
+        if not description:
+            raise ImportFailure(
+                f"ICICI XLS row {source_row_number} is missing transaction remarks."
+            )
+
+        amount_minor_units = parse_icici_row_amount(
+            withdrawal_text,
+            deposit_text,
+            source_row_number=source_row_number,
+        )
+        balance_after = parse_optional_icici_amount(
+            balance_text,
+            field_name="balance",
+            source_row_number=source_row_number,
+        )
+        if previous_balance is not None and balance_after is not None:
+            expected_balance = previous_balance + amount_minor_units
+            if expected_balance != balance_after:
+                raise ImportFailure(
+                    "ICICI XLS balance does not reconcile at row "
+                    f"{source_row_number}: expected {expected_balance}, "
+                    f"found {balance_after}."
+                )
+        if balance_after is not None:
+            previous_balance = balance_after
+
+        parsed_rows.append(
+            ParsedTransaction(
+                transaction_date=parse_icici_date(
+                    transaction_date_text,
+                    field_name="transaction date",
+                    source_row_number=source_row_number,
+                ),
+                value_date=parse_icici_date(
+                    value_date_text,
+                    field_name="value date",
+                    source_row_number=source_row_number,
+                ),
+                amount_minor_units=amount_minor_units,
+                description=description,
+                normalized_description=normalize_description(description),
+                check_number=empty_to_none(cell_at(row, columns.get("check_number"))),
+                source_row_key=str(source_row_number),
+                balance_after_minor_units=balance_after,
+            )
+        )
+
+    if not parsed_rows:
+        raise ImportFailure("ICICI XLS has no parseable transactions.")
+
+    statement_start_date, statement_end_date = extract_icici_statement_period(
+        normalized_rows[:header_index],
+        parsed_rows,
+    )
+    latest_balance = latest_icici_balance(parsed_rows)
+    return ParsedStatement(
+        bank_name=ICICI_BANK_NAME,
+        account_number=account_number,
+        currency="INR",
+        statement_start_date=statement_start_date,
+        statement_end_date=statement_end_date,
+        transactions=parsed_rows,
+        latest_balance_minor_units=latest_balance,
+        latest_balance_as_of_date=statement_end_date if latest_balance is not None else None,
+    )
 
 
 def parse_boa_pdf_text(text: str) -> list[ParsedTransaction]:
@@ -258,6 +473,187 @@ def extract_boa_pdf_statement_period(text: str) -> tuple[str, str]:
     )
 
 
+def find_icici_header(rows: Sequence[Sequence[str]]) -> tuple[int, dict[str, int]]:
+    """Return the ICICI transaction table header index and normalized columns."""
+
+    for row_index, row in enumerate(rows):
+        columns: dict[str, int] = {}
+        for column_index, cell in enumerate(row):
+            field_name = ICICI_HEADER_ALIASES.get(normalize_icici_header(cell))
+            if field_name is not None and field_name not in columns:
+                columns[field_name] = column_index
+        if ICICI_REQUIRED_FIELDS.issubset(columns):
+            return row_index, columns
+    raise ImportFailure("ICICI XLS is missing the transaction table header.")
+
+
+def normalize_icici_header(value: str) -> str:
+    """Return a compact ICICI header key."""
+
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def extract_icici_account_number(rows: Sequence[Sequence[str]]) -> str:
+    """Return the normalized full account number from ICICI statement rows."""
+
+    for row in rows:
+        row_text = " ".join(cell for cell in row if cell)
+        if "account" not in row_text.lower() and "a/c" not in row_text.lower():
+            continue
+        match = ICICI_ACCOUNT_NUMBER_PATTERN.search(row_text)
+        if match is not None:
+            account_number = normalize_account_number(match.group(1))
+            if account_number:
+                return account_number
+    raise ImportFailure("ICICI XLS is missing an account number.")
+
+
+def extract_icici_statement_period(
+    rows: Sequence[Sequence[str]],
+    parsed_rows: list[ParsedTransaction],
+) -> tuple[str, str]:
+    """Return the ICICI statement period, falling back to transaction bounds."""
+
+    for row in rows:
+        row_text = " ".join(cell for cell in row if cell)
+        lower_row_text = row_text.lower()
+        if "period" not in lower_row_text and (
+            "from" not in lower_row_text or "to" not in lower_row_text
+        ):
+            continue
+        dates = [
+            parse_icici_date(match.group(), field_name="statement period", source_row_number=0)
+            for match in ICICI_DATE_TOKEN_PATTERN.finditer(row_text)
+        ]
+        if len(dates) >= 2:
+            return dates[0], dates[1]
+
+    return statement_period_from_rows(parsed_rows)
+
+
+def parse_icici_date(
+    value: str,
+    *,
+    field_name: str,
+    source_row_number: int,
+) -> str:
+    """Parse an ICICI statement date into ISO format."""
+
+    stripped = value.strip()
+    for date_format in (
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%d-%m-%Y",
+        "%d-%m-%y",
+        "%d-%b-%Y",
+        "%d-%b-%y",
+        "%d-%B-%Y",
+        "%d-%B-%y",
+        "%Y-%m-%d",
+    ):
+        try:
+            return datetime.strptime(stripped, date_format).date().isoformat()
+        except ValueError:
+            continue
+    row_detail = f" at row {source_row_number}" if source_row_number else ""
+    raise ImportFailure(f"Invalid ICICI {field_name}{row_detail}: {value}")
+
+
+def parse_icici_row_amount(
+    withdrawal_text: str,
+    deposit_text: str,
+    *,
+    source_row_number: int,
+) -> int:
+    """Return a signed ICICI transaction amount from withdrawal/deposit columns."""
+
+    withdrawal = parse_optional_icici_amount(
+        withdrawal_text,
+        field_name="withdrawal amount",
+        source_row_number=source_row_number,
+    )
+    deposit = parse_optional_icici_amount(
+        deposit_text,
+        field_name="deposit amount",
+        source_row_number=source_row_number,
+    )
+    if withdrawal == 0:
+        withdrawal = None
+    if deposit == 0:
+        deposit = None
+    if withdrawal is not None and deposit is not None:
+        raise ImportFailure(
+            f"ICICI XLS row {source_row_number} has both withdrawal and deposit amounts."
+        )
+    if withdrawal is None and deposit is None:
+        raise ImportFailure(
+            f"ICICI XLS row {source_row_number} is missing an amount."
+        )
+    if withdrawal is not None:
+        return -abs(withdrawal)
+    if deposit is None:
+        raise ImportFailure(
+            f"ICICI XLS row {source_row_number} is missing an amount."
+        )
+    return abs(deposit)
+
+
+def parse_optional_icici_amount(
+    value: str,
+    *,
+    field_name: str,
+    source_row_number: int,
+) -> int | None:
+    """Parse an optional ICICI INR amount into minor units."""
+
+    stripped = value.strip()
+    if not stripped or stripped == "-":
+        return None
+    try:
+        return parse_amount(stripped, "INR").minor_units
+    except ValueError as exc:
+        raise ImportFailure(
+            f"Invalid ICICI {field_name} at row {source_row_number}: {value}"
+        ) from exc
+
+
+def latest_icici_balance(parsed_rows: list[ParsedTransaction]) -> int | None:
+    """Return the final row balance from parsed ICICI transactions."""
+
+    for row in reversed(parsed_rows):
+        if row.balance_after_minor_units is not None:
+            return row.balance_after_minor_units
+    return None
+
+
+def cell_at(row: Sequence[str], index: int | None) -> str:
+    """Return stripped text for a possibly missing row index."""
+
+    if index is None or index >= len(row):
+        return ""
+    return row[index].strip()
+
+
+def cell_to_text(value: object) -> str:
+    """Normalize spreadsheet cell values for parser logic."""
+
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def is_empty_row(row: Sequence[str]) -> bool:
+    """Return whether a normalized spreadsheet row has no content."""
+
+    return all(not cell.strip() for cell in row)
+
+
 def normalize_account_number(value: str) -> str:
     """Normalize account identifiers for strict matching."""
 
@@ -354,6 +750,45 @@ def import_boa_pdf(
         raise
 
 
+def import_icici_xls(
+    paths: AppPaths,
+    xls_path: Path,
+    *,
+    account_id: int,
+    logger: logging.Logger | None = None,
+) -> ImportSummary:
+    """Import an ICICI Bank old-format Excel statement for a configured account."""
+
+    initialize_database(paths)
+    log_debug(logger, "source_format=icici_xls parse_start file_name=%s", xls_path.name)
+    try:
+        parsed_statement = parse_icici_xls(xls_path)
+        log_debug(
+            logger,
+            "source_format=icici_xls account_suffix=%s rows_parsed=%s",
+            account_number_suffix(parsed_statement.account_number),
+            len(parsed_statement.transactions),
+        )
+        return import_parsed_statement(
+            paths,
+            xls_path,
+            account_id=account_id,
+            parsed_statement=parsed_statement,
+            source_format=ICICI_SOURCE_FORMAT,
+            import_label="XLS",
+            logger=logger,
+        )
+    except ImportFailure as exc:
+        record_failed_import(
+            paths,
+            xls_path,
+            source_format=ICICI_SOURCE_FORMAT,
+            error_message=str(exc),
+            account_id=account_id,
+        )
+        raise
+
+
 def plan_boa_csv_import(
     paths: AppPaths,
     csv_path: Path,
@@ -420,6 +855,39 @@ def plan_boa_pdf_import(
         statement_start_date=statement_start_date,
         statement_end_date=statement_end_date,
         pdf_account_number=pdf_account_number,
+        logger=logger,
+    )
+
+
+def plan_icici_xls_import(
+    paths: AppPaths,
+    xls_path: Path,
+    *,
+    account_id: int,
+    logger: logging.Logger | None = None,
+) -> ImportPlan:
+    """Plan an ICICI XLS import without writing data or copying files."""
+
+    initialize_database(paths)
+    log_debug(
+        logger,
+        "source_format=icici_xls dry_run_parse_start file_name=%s",
+        xls_path.name,
+    )
+    parsed_statement = parse_icici_xls(xls_path)
+    log_debug(
+        logger,
+        "source_format=icici_xls dry_run_account_suffix=%s rows_parsed=%s",
+        account_number_suffix(parsed_statement.account_number),
+        len(parsed_statement.transactions),
+    )
+    return plan_parsed_statement_import(
+        paths,
+        xls_path,
+        account_id=account_id,
+        parsed_statement=parsed_statement,
+        source_format=ICICI_SOURCE_FORMAT,
+        import_label="XLS",
         logger=logger,
     )
 
@@ -501,6 +969,75 @@ def plan_boa_transactions(
         rows_already_present=rows_already_present,
         canonical_file_name=file_metadata.canonical_file_name,
         processed_path=file_metadata.processed_path,
+    )
+
+
+def plan_parsed_statement_import(
+    paths: AppPaths,
+    import_path: Path,
+    *,
+    account_id: int,
+    parsed_statement: ParsedStatement,
+    source_format: str,
+    import_label: str,
+    logger: logging.Logger | None = None,
+) -> ImportPlan:
+    """Plan a parsed statement import without persisting changes."""
+
+    file_hash = hash_file(import_path)
+    log_debug(
+        logger,
+        "source_format=%s dry_run_plan_start file_name=%s account_id=%s rows_parsed=%s",
+        source_format,
+        import_path.name,
+        account_id,
+        len(parsed_statement.transactions),
+    )
+
+    with connect_database(paths) as conn:
+        account = find_import_account(conn, account_id)
+        if account is None:
+            raise ImportFailure(f"Account id {account_id} is not configured.")
+        validate_parsed_statement_account(
+            account,
+            parsed_statement=parsed_statement,
+            import_label=import_label,
+            source_format=source_format,
+            logger=logger,
+        )
+        configured_account_number = normalize_account_number(account["account_number"])
+        file_metadata = plan_statement_archive_file(
+            paths,
+            source_path=import_path,
+            bank_name=account["bank_name"],
+            account_ref=account_number_suffix(configured_account_number),
+            statement_start_date=parsed_statement.statement_start_date,
+            statement_end_date=parsed_statement.statement_end_date,
+            source_format=source_format,
+            file_hash=file_hash,
+        )
+        rows_already_present = count_duplicate_transaction_hashes(
+            conn,
+            account_id=account_id,
+            parsed_rows=parsed_statement.transactions,
+            source_format=source_format,
+        )
+
+    rows_would_import = len(parsed_statement.transactions) - rows_already_present
+    return ImportPlan(
+        file_name=import_path.name,
+        bank_name=parsed_statement.bank_name,
+        account_id=account_id,
+        rows_parsed=len(parsed_statement.transactions),
+        rows_would_import=rows_would_import,
+        rows_already_present=rows_already_present,
+        canonical_file_name=file_metadata.canonical_file_name,
+        processed_path=file_metadata.processed_path,
+        latest_balance_minor_units=parsed_statement.latest_balance_minor_units,
+        latest_balance_currency=parsed_statement.currency
+        if parsed_statement.latest_balance_minor_units is not None
+        else None,
+        latest_balance_as_of_date=parsed_statement.latest_balance_as_of_date,
     )
 
 
@@ -657,6 +1194,245 @@ def import_boa_transactions(
         rows_parsed=len(parsed_rows),
         rows_imported=rows_imported,
         rows_skipped_duplicate=rows_skipped_duplicate,
+    )
+
+
+def import_parsed_statement(
+    paths: AppPaths,
+    import_path: Path,
+    *,
+    account_id: int,
+    parsed_statement: ParsedStatement,
+    source_format: str,
+    import_label: str,
+    logger: logging.Logger | None = None,
+) -> ImportSummary:
+    """Persist a parsed statement for a configured account."""
+
+    file_hash = hash_file(import_path)
+    log_debug(
+        logger,
+        "source_format=%s persistence_start file_name=%s account_id=%s rows_parsed=%s",
+        source_format,
+        import_path.name,
+        account_id,
+        len(parsed_statement.transactions),
+    )
+
+    with connect_database(paths) as conn:
+        account = find_import_account(conn, account_id)
+        if account is None:
+            raise ImportFailure(f"Account id {account_id} is not configured.")
+        validate_parsed_statement_account(
+            account,
+            parsed_statement=parsed_statement,
+            import_label=import_label,
+            source_format=source_format,
+            logger=logger,
+        )
+        configured_account_number = normalize_account_number(account["account_number"])
+        bank_id = int(account["bank_id"])
+        category_id = uncategorized_category_id(conn)
+        file_metadata = archive_statement_file(
+            paths,
+            source_path=import_path,
+            bank_name=account["bank_name"],
+            account_ref=account_number_suffix(configured_account_number),
+            statement_start_date=parsed_statement.statement_start_date,
+            statement_end_date=parsed_statement.statement_end_date,
+            source_format=source_format,
+            file_hash=file_hash,
+        )
+        file_id = ensure_import_file(
+            conn,
+            file_name=import_path.name,
+            file_hash=file_hash,
+            bank_id=bank_id,
+            metadata=file_metadata,
+        )
+
+        rows_imported = 0
+        rows_skipped_duplicate = 0
+        for parsed in parsed_statement.transactions:
+            try:
+                conn.execute(
+                    """
+                    insert into transactions (
+                        account_id,
+                        category_id,
+                        file_id,
+                        transaction_date,
+                        value_date,
+                        amount_minor_units,
+                        currency,
+                        description,
+                        normalized_description,
+                        check_number,
+                        source_row_key,
+                        transaction_hash,
+                        transfer_status
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        account_id,
+                        category_id,
+                        file_id,
+                        parsed.transaction_date,
+                        parsed.value_date,
+                        parsed.amount_minor_units,
+                        parsed_statement.currency,
+                        parsed.description,
+                        parsed.normalized_description,
+                        parsed.check_number,
+                        parsed.source_row_key,
+                        transaction_hash(parsed, source_format=source_format),
+                        "none",
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                rows_skipped_duplicate += 1
+            else:
+                rows_imported += 1
+
+        update_latest_account_balance(
+            conn,
+            account_id=account_id,
+            parsed_statement=parsed_statement,
+            file_id=file_id,
+        )
+        conn.execute(
+            """
+            insert into import_attempts (
+                file_id,
+                bank_id,
+                account_id,
+                import_status,
+                finished_at,
+                rows_parsed,
+                rows_imported,
+                rows_skipped_duplicate
+            ) values (?, ?, ?, ?, current_timestamp, ?, ?, ?)
+            """,
+            (
+                file_id,
+                bank_id,
+                account_id,
+                "success",
+                len(parsed_statement.transactions),
+                rows_imported,
+                rows_skipped_duplicate,
+            ),
+        )
+        conn.execute(
+            """
+            update import_files
+            set last_success_at = current_timestamp,
+                updated_at = current_timestamp
+            where file_id = ?
+            """,
+            (file_id,),
+        )
+        conn.commit()
+
+    log_debug(
+        logger,
+        "source_format=%s rows_parsed=%s rows_imported=%s rows_skipped_duplicate=%s "
+        "account_suffix=%s",
+        source_format,
+        len(parsed_statement.transactions),
+        rows_imported,
+        rows_skipped_duplicate,
+        account_number_suffix(parsed_statement.account_number),
+    )
+    return ImportSummary(
+        file_name=import_path.name,
+        bank_name=parsed_statement.bank_name,
+        account_id=account_id,
+        rows_parsed=len(parsed_statement.transactions),
+        rows_imported=rows_imported,
+        rows_skipped_duplicate=rows_skipped_duplicate,
+        latest_balance_minor_units=parsed_statement.latest_balance_minor_units,
+        latest_balance_currency=parsed_statement.currency
+        if parsed_statement.latest_balance_minor_units is not None
+        else None,
+        latest_balance_as_of_date=parsed_statement.latest_balance_as_of_date,
+    )
+
+
+def validate_parsed_statement_account(
+    account: sqlite3.Row,
+    *,
+    parsed_statement: ParsedStatement,
+    import_label: str,
+    source_format: str,
+    logger: logging.Logger | None,
+) -> None:
+    """Validate parsed statement metadata against a configured account."""
+
+    configured_account_number = normalize_account_number(account["account_number"])
+    statement_account_number = normalize_account_number(parsed_statement.account_number)
+    log_debug(
+        logger,
+        "source_format=%s import_account account_id=%s bank=%s currency=%s "
+        "account_suffix=%s statement_suffix=%s",
+        source_format,
+        account["account_id"],
+        account["bank_name"],
+        account["currency"],
+        account_number_suffix(configured_account_number),
+        account_number_suffix(statement_account_number),
+    )
+    if (
+        account["bank_name"] != parsed_statement.bank_name
+        or account["currency"] != parsed_statement.currency
+    ):
+        raise ImportFailure(
+            f"{parsed_statement.bank_name} {import_label} import requires a "
+            f"{parsed_statement.bank_name} {parsed_statement.currency} account."
+        )
+    if configured_account_number != statement_account_number:
+        raise ImportFailure(
+            f"{parsed_statement.bank_name} {import_label} account number does not "
+            "match configured account."
+        )
+
+
+def update_latest_account_balance(
+    conn: sqlite3.Connection,
+    *,
+    account_id: int,
+    parsed_statement: ParsedStatement,
+    file_id: int,
+) -> None:
+    """Update the account latest balance when a statement is current enough."""
+
+    if (
+        parsed_statement.latest_balance_minor_units is None
+        or parsed_statement.latest_balance_as_of_date is None
+    ):
+        return
+    conn.execute(
+        """
+        update accounts
+        set latest_balance_minor_units = ?,
+            latest_balance_currency = ?,
+            latest_balance_as_of_date = ?,
+            latest_balance_source_file_id = ?,
+            updated_at = current_timestamp
+        where account_id = ?
+          and (
+              latest_balance_as_of_date is null
+              or latest_balance_as_of_date <= ?
+          )
+        """,
+        (
+            parsed_statement.latest_balance_minor_units,
+            parsed_statement.currency,
+            parsed_statement.latest_balance_as_of_date,
+            file_id,
+            account_id,
+            parsed_statement.latest_balance_as_of_date,
+        ),
     )
 
 
@@ -882,7 +1658,9 @@ def transaction_hash(parsed: ParsedTransaction, *, source_format: str = "boa_csv
         parsed.normalized_description,
         parsed.check_number or "",
     ]
-    if source_format == "boa_pdf":
+    if source_format == ICICI_SOURCE_FORMAT:
+        parts.insert(2, parsed.value_date or "")
+    if source_format in {"boa_pdf", ICICI_SOURCE_FORMAT}:
         parts.append(parsed.source_row_key)
     return sha256("|".join(parts).encode("utf-8")).hexdigest()
 
