@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 from typing import Literal
 import sqlite3
 
@@ -20,10 +21,15 @@ from bankbuddy.paths import AppPaths
 RepairStatus = Literal["changed", "unchanged", "failed"]
 
 
-@dataclass(frozen=True)
-class BofaPdfRepairFileResult:
-    """Repair result for one imported Bank of America PDF file/account pair."""
+class RepairSourceFormatError(ValueError):
+    """Raised when a statement repair source format is not supported."""
 
+
+@dataclass(frozen=True)
+class StatementRepairFileResult:
+    """Repair result for one imported statement file/account pair."""
+
+    source_format: str
     file_id: int
     account_id: int
     file_name: str
@@ -36,11 +42,12 @@ class BofaPdfRepairFileResult:
 
 
 @dataclass(frozen=True)
-class BofaPdfRepairSummary:
-    """Aggregated repair result for Bank of America PDF imports."""
+class StatementRepairSummary:
+    """Aggregated repair result for imported statement repairs."""
 
+    source_format: str
     dry_run: bool
-    results: list[BofaPdfRepairFileResult]
+    results: list[StatementRepairFileResult]
 
     @property
     def files_scanned(self) -> int:
@@ -79,9 +86,24 @@ class BofaPdfRepairSummary:
         return sum(result.attempts_updated for result in self.results)
 
 
+BofaPdfRepairFileResult = StatementRepairFileResult
+BofaPdfRepairSummary = StatementRepairSummary
+
+
+@dataclass(frozen=True)
+class StatementRepairAdapter:
+    """Source-format-specific hooks for generic statement repair orchestration."""
+
+    source_format: str
+    display_name: str
+    list_targets: Callable[[sqlite3.Connection], list["RepairTarget"]]
+    plan_repair: Callable[[sqlite3.Connection, AppPaths, "RepairTarget"], "RepairPlan"]
+    apply_repair: Callable[[sqlite3.Connection, "RepairPlan", int], None]
+
+
 @dataclass(frozen=True)
 class RepairTarget:
-    """Imported BofA PDF file/account pair eligible for repair."""
+    """Imported statement file/account pair eligible for repair."""
 
     file_id: int
     account_id: int
@@ -119,7 +141,7 @@ class AttemptUpdate:
 
 @dataclass(frozen=True)
 class RepairPlan:
-    """A planned repair for one imported BofA PDF file/account pair."""
+    """A planned repair for one imported statement file/account pair."""
 
     target: RepairTarget
     rows_parsed: int
@@ -131,17 +153,30 @@ class RepairPlan:
 def repair_boa_pdf_imports(paths: AppPaths, *, dry_run: bool) -> BofaPdfRepairSummary:
     """Repair historical Bank of America PDF imports after hash-shape changes."""
 
+    return repair_statement_imports(paths, source_format="boa_pdf", dry_run=dry_run)
+
+
+def repair_statement_imports(
+    paths: AppPaths,
+    *,
+    source_format: str,
+    dry_run: bool,
+) -> StatementRepairSummary:
+    """Repair historical statement imports for a supported source format."""
+
+    adapter = statement_repair_adapter(source_format)
     initialize_database(paths)
-    results: list[BofaPdfRepairFileResult] = []
+    results: list[StatementRepairFileResult] = []
     with connect_database(paths) as conn:
-        targets = list_boa_pdf_repair_targets(conn)
+        targets = adapter.list_targets(conn)
         category_id = uncategorized_category_id(conn)
         for target in targets:
             try:
-                plan = plan_boa_pdf_repair(conn, paths, target)
+                plan = adapter.plan_repair(conn, paths, target)
             except (OSError, sqlite3.Error, ValueError) as exc:
                 results.append(
-                    BofaPdfRepairFileResult(
+                    StatementRepairFileResult(
+                        source_format=adapter.source_format,
                         file_id=target.file_id,
                         account_id=target.account_id,
                         file_name=target.file_name,
@@ -156,12 +191,13 @@ def repair_boa_pdf_imports(paths: AppPaths, *, dry_run: bool) -> BofaPdfRepairSu
                 continue
 
             if not dry_run:
-                apply_boa_pdf_repair(conn, plan, category_id=category_id)
+                adapter.apply_repair(conn, plan, category_id=category_id)
             status: RepairStatus = (
                 "changed" if has_repair_changes(plan) else "unchanged"
             )
             results.append(
-                BofaPdfRepairFileResult(
+                StatementRepairFileResult(
+                    source_format=adapter.source_format,
                     file_id=target.file_id,
                     account_id=target.account_id,
                     file_name=target.file_name,
@@ -174,7 +210,38 @@ def repair_boa_pdf_imports(paths: AppPaths, *, dry_run: bool) -> BofaPdfRepairSu
             )
         if not dry_run:
             conn.commit()
-    return BofaPdfRepairSummary(dry_run=dry_run, results=results)
+    return StatementRepairSummary(
+        source_format=adapter.source_format,
+        dry_run=dry_run,
+        results=results,
+    )
+
+
+def statement_repair_adapter(source_format: str) -> StatementRepairAdapter:
+    """Return the registered statement repair adapter for a source format."""
+
+    normalized_source_format = source_format.strip().lower()
+    adapters = statement_repair_adapters()
+    adapter = adapters.get(normalized_source_format)
+    if adapter is None:
+        raise RepairSourceFormatError(
+            f"Unsupported repair source format: {source_format}"
+        )
+    return adapter
+
+
+def statement_repair_adapters() -> dict[str, StatementRepairAdapter]:
+    """Return statement repair adapters keyed by source format."""
+
+    return {
+        "boa_pdf": StatementRepairAdapter(
+            source_format="boa_pdf",
+            display_name="Bank of America PDF",
+            list_targets=list_boa_pdf_repair_targets,
+            plan_repair=plan_boa_pdf_repair,
+            apply_repair=apply_boa_pdf_repair,
+        )
+    }
 
 
 def list_boa_pdf_repair_targets(conn: sqlite3.Connection) -> list[RepairTarget]:

@@ -23,6 +23,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy repair statement-imports --source-format ...` as a generic
+  dry-run-first statement repair entrypoint, with Bank of America PDF repairs
+  routed through a source-format adapter.
 - Added `bankbuddy statements summary` and `bankbuddy statements list` for
   read-only inventory views of imported statement files by bank, account, year,
   and month.

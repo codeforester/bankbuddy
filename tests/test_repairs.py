@@ -8,7 +8,9 @@ from click.testing import CliRunner
 from bankbuddy.accounts import add_account
 from bankbuddy.cli import main
 from bankbuddy.database import connect_database
+from bankbuddy.repairs import RepairSourceFormatError
 from bankbuddy.repairs import repair_boa_pdf_imports
+from bankbuddy.repairs import repair_statement_imports
 from bankbuddy.paths import resolve_app_paths
 
 
@@ -265,6 +267,67 @@ def test_repair_boa_pdf_imports_cli_defaults_to_dry_run(tmp_path, monkeypatch) -
     assert "Database changed: no" in result.output
     with connect_database(resolve_app_paths(home)) as conn:
         assert conn.execute("select count(*) from transactions").fetchone()[0] == 1
+
+
+def test_repair_statement_imports_routes_by_source_format(tmp_path, monkeypatch) -> None:
+    home, _account_id = seed_old_boa_pdf_import(tmp_path)
+    monkeypatch.setattr("bankbuddy.repairs.extract_pdf_text", lambda _path: BOA_PDF_TEXT)
+    paths = resolve_app_paths(home)
+
+    summary = repair_statement_imports(paths, source_format="boa_pdf", dry_run=True)
+
+    assert summary.dry_run is True
+    assert summary.source_format == "boa_pdf"
+    assert summary.files_scanned == 1
+    assert summary.hashes_updated == 1
+    assert summary.rows_inserted == 1
+    with connect_database(paths) as conn:
+        assert conn.execute("select count(*) from transactions").fetchone()[0] == 1
+
+
+def test_repair_statement_imports_rejects_unknown_source_format(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+
+    try:
+        repair_statement_imports(paths, source_format="made_up", dry_run=True)
+    except RepairSourceFormatError as exc:
+        assert str(exc) == "Unsupported repair source format: made_up"
+    else:
+        raise AssertionError("Expected unsupported repair source format to fail.")
+
+
+def test_repair_statement_imports_cli_defaults_to_dry_run(tmp_path, monkeypatch) -> None:
+    home, _account_id = seed_old_boa_pdf_import(tmp_path)
+    monkeypatch.setattr("bankbuddy.repairs.extract_pdf_text", lambda _path: BOA_PDF_TEXT)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        main,
+        ["repair", "statement-imports", "--source-format", "boa_pdf"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "Source format: boa_pdf" in result.output
+    assert "Dry run: yes" in result.output
+    assert "Files scanned: 1" in result.output
+    assert "Transaction hashes to update: 1" in result.output
+    assert "Rows to insert: 1" in result.output
+    assert "Database changed: no" in result.output
+
+
+def test_repair_statement_imports_cli_rejects_unknown_source_format(tmp_path) -> None:
+    home = resolve_app_paths(tmp_path / "home").root
+    runner = CliRunner()
+
+    result = runner.invoke(
+        main,
+        ["repair", "statement-imports", "--source-format", "made_up"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 1
+    assert "Unsupported repair source format: made_up" in result.output
 
 
 def test_repair_boa_pdf_imports_cli_apply_repairs_database(tmp_path, monkeypatch) -> None:
