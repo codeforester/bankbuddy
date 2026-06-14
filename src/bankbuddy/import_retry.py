@@ -9,6 +9,7 @@ import sqlite3
 from bankbuddy.database import connect_database, initialize_database
 from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import ImportSummary
+from bankbuddy.imports import HDFC_SOURCE_FORMAT
 from bankbuddy.imports import ICICI_SOURCE_FORMAT
 from bankbuddy.imports import ParsedStatement
 from bankbuddy.imports import account_number_suffix
@@ -16,8 +17,9 @@ from bankbuddy.imports import extract_boa_pdf_account_number
 from bankbuddy.imports import extract_pdf_text
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
-from bankbuddy.imports import import_icici_xls
+from bankbuddy.imports import import_parsed_statement
 from bankbuddy.imports import normalize_account_number
+from bankbuddy.imports import parse_hdfc_xls
 from bankbuddy.imports import parse_icici_xls
 from bankbuddy.paths import AppPaths
 
@@ -79,9 +81,15 @@ def retry_import_attempt(
             logger=logger,
         )
 
-    if source_format == ICICI_SOURCE_FORMAT:
+    if source_format in {ICICI_SOURCE_FORMAT, HDFC_SOURCE_FORMAT}:
+        parser = (
+            parse_icici_xls
+            if source_format == ICICI_SOURCE_FORMAT
+            else parse_hdfc_xls
+        )
+        parsed_statement: ParsedStatement | None = None
         if retry_account_id is None:
-            parsed_statement = parse_icici_xls(retry_path)
+            parsed_statement = parser(retry_path)
             retry_account_id = account_id_for_parsed_statement(
                 paths,
                 parsed_statement,
@@ -93,10 +101,15 @@ def retry_import_attempt(
                     f"{parsed_statement.bank_name} XLS account ending "
                     f"{account_suffix}."
                 )
-        return import_icici_xls(
+        if parsed_statement is None:
+            parsed_statement = parser(retry_path)
+        return import_parsed_statement(
             paths,
             retry_path,
             account_id=int(retry_account_id),
+            parsed_statement=parsed_statement,
+            source_format=source_format,
+            import_label="XLS",
             logger=logger,
         )
 

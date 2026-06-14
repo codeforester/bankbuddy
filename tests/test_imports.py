@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,58 @@ ICICI_XLS_ROWS = [
         "50.25",
         "24,050.25",
     ],
+]
+
+HDFC_XLS_ROWS = [
+    ["HDFC BANK Ltd.                                      Statement of accounts"],
+    [""],
+    ["Account Branch :JAYANAGAR-3RD BLOCK"],
+    ["PRIMARY ACCOUNT HOLDER", "Address :LINE 1"],
+    ["Cust ID :12345678"],
+    ["Nomination  :  Registered", "Account No :123456789356   CLASSIC NR"],
+    [
+        "Statement From  :  01/01/2025         To  :  31/12/2025",
+        "A/C Open Date :02/02/2019",
+    ],
+    [
+        "Date",
+        "Narration",
+        "Chq./Ref.No.",
+        "Value Dt",
+        "Withdrawal Amt.",
+        "Deposit Amt.",
+        "Closing Balance",
+    ],
+    ["********", "**********************************", "************", "********"],
+    [
+        "09/01/25",
+        "UPI PAYMENT",
+        "REF001",
+        "09/01/25",
+        "500.00",
+        "",
+        "9,500.00",
+    ],
+    [
+        "31/12/25",
+        "RENT RECEIPT",
+        "REF002",
+        "31/12/25",
+        "",
+        "1,500.50",
+        "11,000.50",
+    ],
+    [
+        "01/01/26",
+        "INTEREST CREDIT",
+        "REF003",
+        "01/01/26",
+        "",
+        "10.00",
+        "11,010.50",
+    ],
+    ["STATEMENT SUMMARY  :-"],
+    ["Opening Balance", "Debits", "Credits", "Closing Bal"],
 ]
 
 
@@ -205,6 +258,53 @@ def test_parse_icici_xls_rows_folds_description_continuation_rows() -> None:
     assert statement.transactions[0].source_row_key == "5,6"
 
 
+def test_parse_hdfc_xls_rows_normalizes_metadata_and_boundary_rows() -> None:
+    statement = imports.parse_hdfc_xls_rows(HDFC_XLS_ROWS)
+
+    assert statement.bank_name == "HDFC Bank"
+    assert statement.account_number == "123456789356"
+    assert statement.currency == "INR"
+    assert statement.statement_start_date == "2025-01-01"
+    assert statement.statement_end_date == "2025-12-31"
+    assert statement.latest_balance_minor_units == 1101050
+    assert statement.latest_balance_as_of_date == "2026-01-01"
+
+    assert len(statement.transactions) == 3
+    assert statement.transactions[0].transaction_date == "2025-01-09"
+    assert statement.transactions[0].value_date == "2025-01-09"
+    assert statement.transactions[0].description == "UPI PAYMENT"
+    assert statement.transactions[0].check_number == "REF001"
+    assert statement.transactions[0].amount_minor_units == -50000
+    assert statement.transactions[0].balance_after_minor_units == 950000
+    assert statement.transactions[1].amount_minor_units == 150050
+    assert statement.transactions[2].transaction_date == "2026-01-01"
+    assert statement.transactions[2].amount_minor_units == 1000
+
+
+def test_parse_hdfc_xls_rows_rejects_balance_discontinuity() -> None:
+    rows = [list(row) for row in HDFC_XLS_ROWS]
+    rows[-3][6] = "99,999.99"
+
+    with pytest.raises(ImportFailure) as exc_info:
+        imports.parse_hdfc_xls_rows(rows)
+
+    assert "HDFC XLS balance does not reconcile" in str(exc_info.value)
+
+
+def test_hdfc_transaction_hash_allows_boundary_row_deduplication() -> None:
+    statement = imports.parse_hdfc_xls_rows(HDFC_XLS_ROWS)
+    boundary_row = statement.transactions[-1]
+    overlapping_boundary_row = replace(boundary_row, source_row_key="99")
+
+    assert transaction_hash(
+        boundary_row,
+        source_format=imports.HDFC_SOURCE_FORMAT,
+    ) == transaction_hash(
+        overlapping_boundary_row,
+        source_format=imports.HDFC_SOURCE_FORMAT,
+    )
+
+
 def test_import_icici_xls_updates_account_latest_balance(tmp_path, monkeypatch) -> None:
     paths = resolve_app_paths(tmp_path / "home")
     xls_path = tmp_path / "icici.xls"
@@ -265,6 +365,71 @@ def test_import_icici_xls_updates_account_latest_balance(tmp_path, monkeypatch) 
     assert account_row["latest_balance_as_of_date"] == "2025-04-30"
     assert account_row["latest_balance_source_file_id"] == file_row["file_id"]
     assert file_row["source_format"] == "icici_xls"
+
+
+def test_import_xls_statement_persists_hdfc_rows_and_latest_balance(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    xls_path = tmp_path / "hdfc.xls"
+    xls_path.write_bytes(b"synthetic xls placeholder")
+    account = add_account(
+        paths,
+        bank_name="HDFC Bank",
+        country="India",
+        account_number="123456789356",
+        account_type="savings",
+        currency="INR",
+        display_name="HDFC Savings",
+    )
+    monkeypatch.setattr(
+        imports,
+        "parse_icici_xls",
+        lambda _path: (_ for _ in ()).throw(
+            imports.ImportFailure("not an ICICI statement")
+        ),
+    )
+    monkeypatch.setattr(
+        imports,
+        "parse_hdfc_xls",
+        lambda _path: imports.parse_hdfc_xls_rows(HDFC_XLS_ROWS),
+    )
+
+    summary = imports.import_xls_statement(
+        paths,
+        xls_path,
+        account_id=account.account_id,
+    )
+
+    assert summary.bank_name == "HDFC Bank"
+    assert summary.rows_parsed == 3
+    assert summary.rows_imported == 3
+    assert summary.latest_balance_minor_units == 1101050
+    assert summary.latest_balance_currency == "INR"
+    assert summary.latest_balance_as_of_date == "2026-01-01"
+    with connect_database(paths) as conn:
+        account_row = conn.execute(
+            """
+            select
+                latest_balance_minor_units,
+                latest_balance_currency,
+                latest_balance_as_of_date,
+                latest_balance_source_file_id
+            from accounts
+            where account_id = ?
+            """,
+            (account.account_id,),
+        ).fetchone()
+        file_row = conn.execute(
+            "select file_id, source_format from import_files"
+        ).fetchone()
+
+    assert account_row["latest_balance_minor_units"] == 1101050
+    assert account_row["latest_balance_currency"] == "INR"
+    assert account_row["latest_balance_as_of_date"] == "2026-01-01"
+    assert account_row["latest_balance_source_file_id"] == file_row["file_id"]
+    assert file_row["source_format"] == "hdfc_xls"
 
 
 def test_normalize_account_number_keeps_digits_only() -> None:

@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.24
+**Version:** 1.25
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.25: Added HDFC Bank `.xls` statement import with INR transactions,
+  statement-period metadata, value dates, row-balance sanity checks, inbox
+  account auto-routing, account latest balance snapshots, and boundary-row
+  deduplication across adjacent statement exports.
 - v1.24: Added `Rental Income` as a built-in system income category, with a
   migration that backfills existing databases.
 - v1.23: Added the manual categorization MVP: `category list`,
@@ -197,7 +201,7 @@ simple `export BANKBUDDY_ENV=prod` or `export BANKBUDDY_ENV=dev`.
 | Migrations | Small SQL migration runner or lightweight Python migration layer |
 | Phase 1 BOA PDF parsing | `pdfplumber` for text-selectable PDFs |
 | Phase 1 CSV fallback parsing | Python `csv` module |
-| ICICI old Excel parsing | `xlrd` for `.xls` statement exports |
+| Indian bank old Excel parsing | `xlrd` for ICICI and HDFC `.xls` statement exports |
 | Later `.xlsx` spreadsheet parsing | `openpyxl` or `pandas` only when needed |
 | Later PDF parsing | OCR or bank-specific PDF hardening after sample PDFs are validated |
 | Categorization | Rule-based first, `scikit-learn` later |
@@ -214,20 +218,22 @@ simple `export BANKBUDDY_ENV=prod` or `export BANKBUDDY_ENV=dev`.
 - Bank of America (USA) — text-selectable PDF statement
 - Bank of America (USA) — CSV export fallback when available
 - ICICI Bank (India) — old Excel `.xls` statement export
+- HDFC Bank (India) — old Excel `.xls` statement export
 
 The first implementation intentionally started with one bank. The Bank of
 America primary import path is a text-selectable PDF statement because CSV
 export may not be available for every account flow. CSV remains supported when
 available, but OCR, password-protected PDFs, and broad PDF layout support are
 later work.
-ICICI `.xls` support is the first INR parser because the spreadsheet contains
-reliable table columns, full account metadata, value dates, transaction dates,
-withdrawal/deposit amounts, and running balances. ICICI PDFs remain archival
-reference input until a separate parser is justified.
+ICICI and HDFC `.xls` support covers the first INR parser family because these
+spreadsheets contain reliable table columns, full account metadata, value
+dates, transaction dates, withdrawal/deposit amounts, and running balances.
+ICICI and HDFC PDFs remain archival reference input until separate parsers are
+justified.
 
 ### Later Banks
 
-- HDFC Bank (India) — PDF statement, possibly password-protected
+- HDFC Bank (India) — PDF statement for earlier years, possibly password-protected
 - ICICI Bank (India) — PDF statement, possibly password-protected
 
 ### Currencies
@@ -238,7 +244,8 @@ reference input until a separate parser is justified.
 Multi-currency support means the schema, import normalization, reports, and
 budgets always carry a currency code. Bank of America PDF and CSV imports
 produce USD transactions. ICICI `.xls` imports produce INR transactions. HDFC
-and other Indian bank parsers remain later work.
+`.xls` imports produce INR transactions. Other Indian bank parsers remain
+later work.
 
 No cross-currency consolidation happens in early phases. Budgets and reports are
 per-currency unless a later design explicitly adds conversion.
@@ -518,7 +525,8 @@ temporary conservative preservation policy. Bank of America PDFs can be
 auto-routed by full statement account number when it matches exactly one
 configured BOA USD account. ICICI `.xls` files can be auto-routed by full
 statement account number when it matches exactly one configured ICICI INR
-account. CSV inbox imports still require an explicit account id until a
+account. HDFC `.xls` files follow the same routing model for configured HDFC
+INR accounts. CSV inbox imports still require an explicit account id until a
 supported CSV format provides reliable account metadata, except when the CSV
 file is an exact duplicate of a prior successful import. Automatic watching
 comes later.
@@ -546,7 +554,9 @@ processed files, duplicate files, or remove inbox files.
    signals. Bank of America PDFs support both `Statement Period: ... through
    ...` headers and account header lines shaped like `for ... to ... Account
    number`. ICICI `.xls` imports use spreadsheet account, statement period,
-   value date, transaction date, withdrawal/deposit, and balance columns.
+   value date, transaction date, withdrawal/deposit, and balance columns. HDFC
+   `.xls` imports use the analogous HDFC columns and skip masked separator and
+   statement-summary rows.
 6. Parse into staged transactions.
 7. For PDF imports, validate that the full account number in the statement
    matches the selected configured account.
@@ -965,6 +975,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - account setup/list commands
 - retry failed imports
 - ICICI `.xls` statement parser with INR transactions and latest balance snapshot
+- HDFC `.xls` statement parser with INR transactions and latest balance snapshot
 - HDFC and ICICI PDF parser spikes using real samples
 - interactive PDF password prompt
 - additional INR import paths through Indian bank parsers
