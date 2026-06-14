@@ -35,6 +35,9 @@ from bankbuddy.imports import import_boa_pdf
 from bankbuddy.imports import plan_boa_csv_import
 from bankbuddy.imports import plan_boa_pdf_import
 from bankbuddy.paths import resolve_app_paths
+from bankbuddy.repairs import BofaPdfRepairFileResult
+from bankbuddy.repairs import BofaPdfRepairSummary
+from bankbuddy.repairs import repair_boa_pdf_imports
 from bankbuddy.reports import spending_report
 from bankbuddy.runtime import CliRuntime
 from bankbuddy.runtime import RuntimeConfigError
@@ -980,6 +983,87 @@ def export_sqlite_command(
     click.echo(f"Exported SQLite database to {exported_path}")
     click.echo(
         "Warning: export contains sensitive financial data and actual account numbers."
+    )
+
+
+@main.group()
+def repair() -> None:
+    """Repair historical imported data."""
+
+
+@repair.command("bofa-pdf-imports")
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    help="Apply database changes. Defaults to dry-run.",
+)
+@click.pass_context
+def repair_bofa_pdf_imports_command(
+    ctx: click.Context,
+    apply_changes: bool,
+) -> None:
+    """Repair historical Bank of America PDF import rows."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    summary = repair_boa_pdf_imports(paths, dry_run=not apply_changes)
+    runtime.log.debug(
+        "repair_bofa_pdf_imports dry_run=%s files_scanned=%s files_changed=%s "
+        "files_failed=%s hashes_updated=%s rows_inserted=%s attempts_updated=%s",
+        summary.dry_run,
+        summary.files_scanned,
+        summary.files_changed,
+        summary.files_failed,
+        summary.hashes_updated,
+        summary.rows_inserted,
+        summary.attempts_updated,
+    )
+    render_bofa_pdf_repair_summary(summary)
+
+
+def render_bofa_pdf_repair_summary(summary: BofaPdfRepairSummary) -> None:
+    """Render a Bank of America PDF repair summary."""
+
+    click.echo(f"Dry run: {'yes' if summary.dry_run else 'no'}")
+    click.echo(f"Files scanned: {summary.files_scanned}")
+    click.echo(f"Files changed: {summary.files_changed}")
+    click.echo(f"Files failed: {summary.files_failed}")
+    click.echo(f"Transaction hashes to update: {summary.hashes_updated}")
+    click.echo(f"Rows to insert: {summary.rows_inserted}")
+    click.echo(f"Import attempts to update: {summary.attempts_updated}")
+    if summary.results:
+        render_bofa_pdf_repair_results(summary.results)
+    database_changed = not summary.dry_run and summary.files_changed > 0
+    click.echo(f"Database changed: {'yes' if database_changed else 'no'}")
+
+
+def render_bofa_pdf_repair_results(results: list[BofaPdfRepairFileResult]) -> None:
+    """Render per-file repair results."""
+
+    render_pretty_table(
+        [
+            "Status",
+            "File",
+            "Parsed",
+            "Hash Updates",
+            "Inserts",
+            "Attempt Updates",
+            "Message",
+        ],
+        [
+            [
+                result.status,
+                result.file_name,
+                str(result.rows_parsed),
+                str(result.hashes_updated),
+                str(result.rows_inserted),
+                str(result.attempts_updated),
+                result.message or "-",
+            ]
+            for result in results
+        ],
+        ["left", "left", "right", "right", "right", "right", "left"],
     )
 
 
