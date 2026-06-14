@@ -1,4 +1,5 @@
 from bankbuddy.accounts import add_account
+import bankbuddy.imports as imports
 from bankbuddy.database import connect_database
 from bankbuddy.inbox import import_inbox
 from bankbuddy.inbox import iter_inbox_files
@@ -130,6 +131,79 @@ def test_import_inbox_routes_boa_pdf_by_account_number(tmp_path, monkeypatch) ->
         processed_path = conn.execute("select processed_path from import_files").fetchone()[0]
     assert transaction_count == 2
     assert (paths.root / processed_path).is_file()
+
+
+def test_import_inbox_routes_statement_by_account_statement_ref(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from bankbuddy.account_refs import add_account_statement_ref
+
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_account(
+        paths,
+        bank_name="Apple Card",
+        country="US",
+        account_number="1111",
+        account_type="credit_card",
+        currency="USD",
+    )
+    add_account_statement_ref(
+        paths,
+        account_id=account.account_id,
+        ref_type="product",
+        ref_value="apple-card",
+        source_format="apple_card_pdf",
+    )
+    paths.inbox.mkdir(parents=True, exist_ok=True)
+    inbox_file = paths.inbox / "statement.xls"
+    inbox_file.write_bytes(b"synthetic statement placeholder")
+    parsed_statement = imports.ParsedStatement(
+        bank_name="Apple Card",
+        account_number="",
+        currency="USD",
+        statement_start_date="2026-03-01",
+        statement_end_date="2026-03-31",
+        transactions=[
+            imports.ParsedTransaction(
+                transaction_date="2026-03-15",
+                amount_minor_units=-1250,
+                description="CARD PURCHASE",
+                normalized_description="card purchase",
+                check_number=None,
+                source_row_key="1",
+            )
+        ],
+        statement_refs=(
+            imports.StatementAccountRef(
+                ref_type="product",
+                ref_value="apple-card",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "bankbuddy.imports.parse_xls_statement",
+        lambda _path: (parsed_statement, "apple_card_pdf"),
+    )
+
+    summary = import_inbox(paths)
+
+    assert summary.total_files == 1
+    assert summary.successful_files == 1
+    assert summary.failed_files == 0
+    assert summary.results[0].file_name == "statement.xls"
+    assert summary.results[0].status == "success"
+    assert summary.results[0].rows_imported == 1
+    assert not inbox_file.exists()
+    with connect_database(paths) as conn:
+        transaction = conn.execute(
+            "select account_id, currency, amount_minor_units from transactions"
+        ).fetchone()
+    assert dict(transaction) == {
+        "account_id": account.account_id,
+        "currency": "USD",
+        "amount_minor_units": -1250,
+    }
 
 
 def test_import_inbox_dry_run_reports_duplicate_without_archive_or_history(

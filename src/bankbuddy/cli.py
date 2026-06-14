@@ -13,6 +13,13 @@ from typing import Literal
 import click
 
 from bankbuddy import __version__
+from bankbuddy.account_refs import AccountStatementRef
+from bankbuddy.account_refs import AccountStatementRefError
+from bankbuddy.account_refs import add_account_statement_ref
+from bankbuddy.account_refs import display_ref_value
+from bankbuddy.account_refs import display_source_format
+from bankbuddy.account_refs import list_account_statement_refs
+from bankbuddy.account_refs import remove_account_statement_ref
 from bankbuddy.accounts import AccountAlreadyExistsError
 from bankbuddy.accounts import AccountSummary
 from bankbuddy.accounts import CountryCodeError
@@ -302,6 +309,105 @@ def account_show(ctx: click.Context, account_id: int) -> None:
     render_account_detail(account)
 
 
+@account.group("ref")
+def account_ref() -> None:
+    """Manage parser-visible account references."""
+
+
+@account_ref.command("add")
+@click.option("--account-id", required=True, type=int, help="Configured account id.")
+@click.option(
+    "--type",
+    "ref_type",
+    required=True,
+    type=click.Choice(
+        [
+            "full_account_number",
+            "full-account-number",
+            "last4",
+            "masked_account",
+            "masked-account",
+            "product",
+        ],
+        case_sensitive=False,
+    ),
+    help="Statement reference type.",
+)
+@click.option("--value", "ref_value", required=True, help="Reference value.")
+@click.option(
+    "--source-format",
+    help="Optional parser source format, such as boa_pdf. Defaults to any.",
+)
+@click.pass_context
+def account_ref_add(
+    ctx: click.Context,
+    account_id: int,
+    ref_type: str,
+    ref_value: str,
+    source_format: str | None,
+) -> None:
+    """Add an account statement reference."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        statement_ref = add_account_statement_ref(
+            paths,
+            account_id=account_id,
+            ref_type=ref_type,
+            ref_value=ref_value,
+            source_format=source_format,
+        )
+    except AccountStatementRefError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug(
+        "account_ref_added statement_ref_id=%s account_id=%s type=%s source=%s",
+        statement_ref.statement_ref_id,
+        statement_ref.account_id,
+        statement_ref.ref_type,
+        display_source_format(statement_ref.source_format),
+    )
+    click.echo(
+        f"Added account statement ref {statement_ref.statement_ref_id} "
+        f"for account {statement_ref.account_id}."
+    )
+
+
+@account_ref.command("list")
+@click.option("--account-id", type=int, help="Filter by configured account id.")
+@click.pass_context
+def account_ref_list(ctx: click.Context, account_id: int | None) -> None:
+    """List account statement references."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    refs = list_account_statement_refs(paths, account_id=account_id)
+    runtime.log.debug("account_ref_list count=%s account_id=%s", len(refs), account_id)
+    if not refs:
+        click.echo("No account statement refs configured.")
+        return
+
+    render_account_statement_refs(refs)
+
+
+@account_ref.command("remove")
+@click.argument("statement_ref_id", type=int)
+@click.pass_context
+def account_ref_remove(ctx: click.Context, statement_ref_id: int) -> None:
+    """Remove an account statement reference."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        remove_account_statement_ref(paths, statement_ref_id=statement_ref_id)
+    except AccountStatementRefError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug("account_ref_removed statement_ref_id=%s", statement_ref_id)
+    click.echo(f"Removed account statement ref {statement_ref_id}.")
+
+
 def render_account_summary(accounts: list[AccountSummary]) -> None:
     """Render account summaries as an aligned table."""
 
@@ -358,6 +464,26 @@ def render_account_detail(account: AccountSummary) -> None:
     click.echo(f"Latest balance: {format_account_balance(account)}")
     click.echo(f"Latest balance as of: {account.latest_balance_as_of_date or '-'}")
     click.echo(f"Latest balance source: {account.latest_balance_source or '-'}")
+
+
+def render_account_statement_refs(refs: list[AccountStatementRef]) -> None:
+    """Render account statement refs as an aligned table."""
+
+    render_pretty_table(
+        ["ID", "Account", "Bank", "Type", "Value", "Source"],
+        [
+            [
+                str(ref.statement_ref_id),
+                str(ref.account_id),
+                ref.bank_name,
+                ref.ref_type,
+                display_ref_value(ref),
+                display_source_format(ref.source_format),
+            ]
+            for ref in refs
+        ],
+        ["right", "right", "left", "left", "left", "left"],
+    )
 
 
 def format_account_balance(account: AccountSummary) -> str:

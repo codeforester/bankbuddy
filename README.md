@@ -44,6 +44,13 @@ bankbuddy account add \
 bankbuddy account list
 bankbuddy account summary
 bankbuddy account show 1
+bankbuddy account ref add --account-id 1 --type last4 --value 1145
+bankbuddy account ref add \
+  --account-id 1 \
+  --type product \
+  --value apple-card \
+  --source-format apple_card_pdf
+bankbuddy account ref list
 bankbuddy import --dry-run --file path/to/boa.pdf --account-id 1
 bankbuddy import --file path/to/boa.pdf --account-id 1
 bankbuddy import --dry-run --file path/to/icici.xls --account-id 2
@@ -164,6 +171,12 @@ Use `--years YYYY[,YYYY...]` for independent calendar-year windows or
 `--from YYYY-MM-DD --to YYYY-MM-DD` for one explicit range. The audit is
 read-only and can be narrowed with `--bank`, `--account-id`, or
 `--account-last4`.
+
+Statement import routing is based on content extracted from the file, not the
+source filename. BankBuddy uses parser-detected bank, currency, account number,
+and configured `account ref` values to map a statement to one account. If an
+explicit `--account-id` is supplied and a document identity maps to a different
+configured account, the import fails instead of trusting the flag.
 
 Bank of America imports support text-selectable PDF statements first, plus CSV
 files when available. BOA PDF period extraction supports the statement-period

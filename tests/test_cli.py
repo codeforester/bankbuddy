@@ -537,3 +537,171 @@ def test_account_show_rejects_unknown_account(tmp_path) -> None:
 
     assert result.exit_code == 1
     assert "Account not found: 999" in result.output
+
+
+def test_account_ref_add_list_and_remove(tmp_path) -> None:
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path)}
+    add_account_result = runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+            "--display-name",
+            "Everyday Checking",
+        ],
+        env=env,
+    )
+
+    add_ref_result = runner.invoke(
+        main,
+        [
+            "account",
+            "ref",
+            "add",
+            "--account-id",
+            "1",
+            "--type",
+            "last4",
+            "--value",
+            "6789",
+            "--source-format",
+            "boa_pdf",
+        ],
+        env=env,
+    )
+    list_result = runner.invoke(main, ["account", "ref", "list"], env=env)
+    remove_result = runner.invoke(main, ["account", "ref", "remove", "1"], env=env)
+    empty_list_result = runner.invoke(main, ["account", "ref", "list"], env=env)
+
+    assert add_account_result.exit_code == 0
+    assert add_ref_result.exit_code == 0
+    assert "Added account statement ref 1 for account 1." in add_ref_result.output
+    assert list_result.exit_code == 0
+    assert "ID | Account | Bank            | Type  | Value | Source" in list_result.output
+    assert " 1 |       1 | Bank of America | last4 | 6789  | boa_pdf" in (
+        list_result.output
+    )
+    assert remove_result.exit_code == 0
+    assert "Removed account statement ref 1." in remove_result.output
+    assert empty_list_result.exit_code == 0
+    assert "No account statement refs configured." in empty_list_result.output
+
+
+def test_account_ref_add_masks_full_account_numbers_in_list(tmp_path) -> None:
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Example Bank",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    add_ref_result = runner.invoke(
+        main,
+        [
+            "account",
+            "ref",
+            "add",
+            "--account-id",
+            "1",
+            "--type",
+            "full_account_number",
+            "--value",
+            "123456789",
+        ],
+        env=env,
+    )
+    list_result = runner.invoke(main, ["account", "ref", "list"], env=env)
+
+    assert add_ref_result.exit_code == 0
+    assert list_result.exit_code == 0
+    assert "...6789" in list_result.output
+    assert "123456789" not in list_result.output
+
+
+def test_account_ref_add_rejects_ambiguous_ref_for_same_bank_currency(
+    tmp_path,
+) -> None:
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path)}
+    for account_number in ("1111", "2222"):
+        runner.invoke(
+            main,
+            [
+                "account",
+                "add",
+                "--bank",
+                "Apple Card",
+                "--country",
+                "US",
+                "--account-number",
+                account_number,
+                "--type",
+                "credit_card",
+                "--currency",
+                "USD",
+            ],
+            env=env,
+        )
+    first = runner.invoke(
+        main,
+        [
+            "account",
+            "ref",
+            "add",
+            "--account-id",
+            "1",
+            "--type",
+            "product",
+            "--value",
+            "apple-card",
+            "--source-format",
+            "apple_card_pdf",
+        ],
+        env=env,
+    )
+    second = runner.invoke(
+        main,
+        [
+            "account",
+            "ref",
+            "add",
+            "--account-id",
+            "2",
+            "--type",
+            "product",
+            "--value",
+            "apple-card",
+            "--source-format",
+            "apple_card_pdf",
+        ],
+        env=env,
+    )
+
+    assert first.exit_code == 0
+    assert second.exit_code == 1
+    assert "would be ambiguous" in second.output
