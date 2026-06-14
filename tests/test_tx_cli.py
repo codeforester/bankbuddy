@@ -101,6 +101,108 @@ def test_tx_list_filters_by_credit_direction(tmp_path) -> None:
     assert "COFFEE SHOP" not in result.output
 
 
+def test_tx_list_sorts_by_amount_descending(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--sort", "amount:desc"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert result.output.index("PAYROLL") < result.output.index("COFFEE SHOP")
+
+
+def test_tx_list_uses_global_sort_order(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--sort", "date", "--order", "desc"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert result.output.index("PAYROLL") < result.output.index("COFFEE SHOP")
+
+
+def test_tx_list_rejects_invalid_sort_field(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--sort", "posted_at"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code != 0
+    assert "Unsupported sort field" in result.output
+
+
+def test_tx_list_outputs_compact_view(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--view", "compact"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "Date  Amount  Currency  Description" in result.output
+    assert "2026-06-10  -4.25  USD  COFFEE SHOP" in result.output
+    assert "Everyday Checking" not in result.output
+
+
+def test_tx_list_outputs_ledger_view(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--view", "ledger"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "ID  Date  Account  Type  Amount  Currency  Description" in result.output
+    assert "1  2026-06-10  Everyday Checking  debit  -4.25  USD  COFFEE SHOP" in (
+        result.output
+    )
+    assert "2  2026-06-11  Everyday Checking  credit  2500.00  USD  PAYROLL" in (
+        result.output
+    )
+
+
+def test_tx_list_outputs_summary(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--summary"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "Summary" in result.output
+    assert "Currency  Transactions  Debits  Credits  Net" in result.output
+    assert "USD  2  -4.25  2500.00  2495.75" in result.output
+
+
+def test_tx_list_summary_respects_direction_filter(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--direction", "debit", "--summary"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "USD  1  -4.25  0.00  -4.25" in result.output
+    assert "PAYROLL" not in result.output
+
+
 def test_tx_list_reports_empty_state(tmp_path) -> None:
     result = CliRunner().invoke(
         main,

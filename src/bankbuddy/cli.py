@@ -33,6 +33,9 @@ from bankbuddy.runtime import RuntimeConfigError
 from bankbuddy.runtime import create_runtime
 from bankbuddy.transactions import format_minor_units
 from bankbuddy.transactions import list_transactions
+from bankbuddy.transactions import summarize_transactions
+from bankbuddy.transactions import TransactionRow
+from bankbuddy.transactions import TransactionSortError
 
 
 @click.group(
@@ -229,6 +232,22 @@ def tx() -> None:
     type=click.Choice(["debit", "credit"], case_sensitive=False),
     help="Filter by money direction: debit for negative amounts, credit for positive.",
 )
+@click.option("--sort", "sort_expression", help="Comma-separated sort fields.")
+@click.option(
+    "--order",
+    type=click.Choice(["asc", "desc"], case_sensitive=False),
+    default="asc",
+    show_default=True,
+    help="Default sort direction for fields without an explicit direction.",
+)
+@click.option(
+    "--view",
+    type=click.Choice(["default", "compact", "ledger"], case_sensitive=False),
+    default="default",
+    show_default=True,
+    help="Transaction list view.",
+)
+@click.option("--summary", is_flag=True, help="Show summary totals for listed rows.")
 @click.pass_context
 def tx_list(
     ctx: click.Context,
@@ -236,6 +255,10 @@ def tx_list(
     date_from: str | None,
     date_to: str | None,
     direction: str | None,
+    sort_expression: str | None,
+    order: str,
+    view: str,
+    summary: bool,
 ) -> None:
     """List imported transactions."""
 
@@ -243,23 +266,64 @@ def tx_list(
     paths = resolve_app_paths(environment=runtime.environment)
     normalized_date_from = validate_iso_date(date_from, "--from")
     normalized_date_to = validate_iso_date(date_to, "--to")
-    rows = list_transactions(
-        paths,
-        account_id=account_id,
-        date_from=normalized_date_from,
-        date_to=normalized_date_to,
-        direction=direction.lower() if direction else None,
-    )
+    try:
+        rows = list_transactions(
+            paths,
+            account_id=account_id,
+            date_from=normalized_date_from,
+            date_to=normalized_date_to,
+            direction=direction.lower() if direction else None,
+            sort=sort_expression,
+            default_order=order.lower(),
+        )
+    except TransactionSortError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    normalized_view = view.lower()
     runtime.log.debug(
-        "tx_list count=%s account_id=%s date_from=%s date_to=%s direction=%s",
+        "tx_list count=%s account_id=%s date_from=%s date_to=%s direction=%s "
+        "sort=%s order=%s view=%s summary=%s",
         len(rows),
         account_id,
         normalized_date_from,
         normalized_date_to,
         direction,
+        sort_expression,
+        order,
+        normalized_view,
+        summary,
     )
     if not rows:
         click.echo("No transactions found.")
+        return
+
+    render_transaction_rows(rows, view=normalized_view)
+    if summary:
+        click.echo("")
+        render_transaction_summary(rows)
+
+
+def render_transaction_rows(rows: list[TransactionRow], *, view: str) -> None:
+    """Render transaction rows for a named human-readable view."""
+
+    if view == "compact":
+        click.echo("Date  Amount  Currency  Description")
+        for row in rows:
+            click.echo(
+                f"{row.transaction_date}  {format_minor_units(row.amount_minor_units)}  "
+                f"{row.currency}  {row.description}"
+            )
+        return
+
+    if view == "ledger":
+        click.echo("ID  Date  Account  Type  Amount  Currency  Description")
+        for row in rows:
+            click.echo(
+                f"{row.transaction_id}  {row.transaction_date}  "
+                f"{row.account_display}  {transaction_type(row)}  "
+                f"{format_minor_units(row.amount_minor_units)}  "
+                f"{row.currency}  {row.description}"
+            )
         return
 
     click.echo("ID  Date  Account  Amount  Currency  Description")
@@ -269,6 +333,30 @@ def tx_list(
             f"{row.account_display}  {format_minor_units(row.amount_minor_units)}  "
             f"{row.currency}  {row.description}"
         )
+
+
+def render_transaction_summary(rows: list[TransactionRow]) -> None:
+    """Render per-currency summary totals for transaction rows."""
+
+    click.echo("Summary")
+    click.echo("Currency  Transactions  Debits  Credits  Net")
+    for row in summarize_transactions(rows):
+        click.echo(
+            f"{row.currency}  {row.transaction_count}  "
+            f"{format_minor_units(row.debit_minor_units)}  "
+            f"{format_minor_units(row.credit_minor_units)}  "
+            f"{format_minor_units(row.net_minor_units)}"
+        )
+
+
+def transaction_type(row: TransactionRow) -> str:
+    """Return a simple debit/credit/zero label for a transaction row."""
+
+    if row.amount_minor_units < 0:
+        return "debit"
+    if row.amount_minor_units > 0:
+        return "credit"
+    return "zero"
 
 
 def validate_iso_date(value: str | None, option_name: str) -> str | None:

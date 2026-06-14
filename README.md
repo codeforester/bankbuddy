@@ -44,6 +44,11 @@ bankbuddy import retry 1 --account-id 1
 bankbuddy tx list
 bankbuddy tx list --direction debit
 bankbuddy tx list --direction credit
+bankbuddy tx list --sort date:desc,amount
+bankbuddy tx list --sort amount --order desc
+bankbuddy tx list --view compact
+bankbuddy tx list --view ledger
+bankbuddy tx list --summary
 bankbuddy tx list --account-id 1 --from 2026-04-01 --to 2026-05-31
 bankbuddy report spending --year 2026
 bankbuddy report spending --year 2026 --month 5
