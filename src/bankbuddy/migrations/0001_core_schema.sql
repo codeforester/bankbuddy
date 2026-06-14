@@ -37,6 +37,7 @@ insert into categories (category_name, category_kind, is_system) values
     ('Salary', 'income', 1),
     ('Interest', 'income', 1),
     ('Dividends', 'income', 1),
+    ('Rental Income', 'income', 1),
     ('Groceries', 'expense', 1),
     ('Dining', 'expense', 1),
     ('Utilities', 'expense', 1),

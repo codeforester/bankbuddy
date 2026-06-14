@@ -23,6 +23,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `Rental Income` as a built-in system income category for new and
+  existing databases.
 - Added manual transaction categorization with `bankbuddy category list`,
   `bankbuddy tx categorize`, `bankbuddy tx list --category`, and
   `bankbuddy tx list --uncategorized`.
