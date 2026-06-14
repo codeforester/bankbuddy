@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 
 import bankbuddy.imports as statement_imports
-from bankbuddy.database import connect_database
 from bankbuddy.database import initialize_database
 from bankbuddy.import_files import archive_duplicate_statement_file
 from bankbuddy.import_files import plan_duplicate_statement_path
@@ -221,6 +220,7 @@ def import_inbox(
                     resolved_account_id = account_id_for_parsed_statement(
                         paths,
                         parsed_statement,
+                        source_format=source_format,
                     )
                     if resolved_account_id is None:
                         account_suffix = statement_imports.account_number_suffix(
@@ -297,63 +297,25 @@ def account_id_for_boa_pdf_account_number(
 ) -> int | None:
     """Return the configured BOA USD account id for a normalized PDF account number."""
 
-    normalized_account_number = statement_imports.normalize_account_number(account_number)
-    with connect_database(paths) as conn:
-        rows = conn.execute(
-            """
-            select
-                accounts.account_id,
-                accounts.account_number
-            from accounts
-            join banks using (bank_id)
-            where banks.bank_name = ?
-              and accounts.currency = ?
-            order by accounts.account_id
-            """,
-            ("Bank of America", "USD"),
-        ).fetchall()
-
-    matches = [
-        int(row["account_id"])
-        for row in rows
-        if statement_imports.normalize_account_number(row["account_number"])
-        == normalized_account_number
-    ]
-    if len(matches) != 1:
-        return None
-    return matches[0]
+    return statement_imports.resolve_statement_account_id(
+        paths,
+        bank_name="Bank of America",
+        currency="USD",
+        source_format="boa_pdf",
+        account_number=account_number,
+    )
 
 
 def account_id_for_parsed_statement(
     paths: AppPaths,
     parsed_statement: statement_imports.ParsedStatement,
+    *,
+    source_format: str,
 ) -> int | None:
     """Return the configured account id matching parsed statement metadata."""
 
-    normalized_account_number = statement_imports.normalize_account_number(
-        parsed_statement.account_number
+    return statement_imports.resolve_parsed_statement_account_id(
+        paths,
+        parsed_statement=parsed_statement,
+        source_format=source_format,
     )
-    with connect_database(paths) as conn:
-        rows = conn.execute(
-            """
-            select
-                accounts.account_id,
-                accounts.account_number
-            from accounts
-            join banks using (bank_id)
-            where banks.bank_name = ?
-              and accounts.currency = ?
-            order by accounts.account_id
-            """,
-            (parsed_statement.bank_name, parsed_statement.currency),
-        ).fetchall()
-
-    matches = [
-        int(row["account_id"])
-        for row in rows
-        if statement_imports.normalize_account_number(row["account_number"])
-        == normalized_account_number
-    ]
-    if len(matches) != 1:
-        return None
-    return matches[0]

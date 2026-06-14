@@ -953,3 +953,74 @@ def test_import_boa_pdf_rejects_account_number_mismatch(tmp_path, monkeypatch) -
     with connect_database(paths) as conn:
         transaction_count = conn.execute("select count(*) from transactions").fetchone()[0]
     assert transaction_count == 0
+
+
+def test_import_parsed_statement_rejects_explicit_account_id_mapped_to_other_ref(
+    tmp_path,
+) -> None:
+    from bankbuddy.account_refs import add_account_statement_ref
+
+    paths = resolve_app_paths(tmp_path / "home")
+    first_account = add_account(
+        paths,
+        bank_name="Apple Card",
+        country="US",
+        account_number="1111",
+        account_type="credit_card",
+        currency="USD",
+    )
+    second_account = add_account(
+        paths,
+        bank_name="Apple Card",
+        country="US",
+        account_number="2222",
+        account_type="credit_card",
+        currency="USD",
+    )
+    add_account_statement_ref(
+        paths,
+        account_id=first_account.account_id,
+        ref_type="product",
+        ref_value="apple-card",
+        source_format="apple_card_pdf",
+    )
+    statement = imports.ParsedStatement(
+        bank_name="Apple Card",
+        account_number="",
+        currency="USD",
+        statement_start_date="2026-03-01",
+        statement_end_date="2026-03-31",
+        transactions=[
+            imports.ParsedTransaction(
+                transaction_date="2026-03-15",
+                amount_minor_units=-1250,
+                description="CARD PURCHASE",
+                normalized_description="card purchase",
+                check_number=None,
+                source_row_key="1",
+            )
+        ],
+        statement_refs=(
+            imports.StatementAccountRef(
+                ref_type="product",
+                ref_value="apple-card",
+            ),
+        ),
+    )
+    source_path = tmp_path / "apple.pdf"
+    source_path.write_bytes(b"%PDF synthetic fixture placeholder")
+
+    with pytest.raises(ImportFailure, match="maps to account 1, not account 2"):
+        imports.import_parsed_statement(
+            paths,
+            source_path,
+            account_id=second_account.account_id,
+            parsed_statement=statement,
+            source_format="apple_card_pdf",
+            import_label="PDF",
+        )
+
+    with connect_database(paths) as conn:
+        transaction_count = conn.execute("select count(*) from transactions").fetchone()[0]
+
+    assert transaction_count == 0

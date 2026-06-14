@@ -23,6 +23,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `account_statement_refs` and `bankbuddy account ref` commands for
+  content-based statement account routing, including explicit-account mismatch
+  protection when a document identity maps to another configured account.
 - Added `Rental Income` as a built-in system income category for new and
   existing databases.
 - Added HDFC Bank `.xls` statement imports with INR transactions, value-date

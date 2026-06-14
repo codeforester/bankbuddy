@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.26
+**Version:** 1.27
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.27: Added first-class `account_statement_refs` for parser-visible
+  account identifiers, plus `account ref` CLI management. Import routing is
+  based on content extracted from files, not source filenames, and explicit
+  `--account-id` fails when document identity maps to a different account.
 - v1.26: Added `audit statements --bank` so statement coverage audits can be
   narrowed by bank name consistently with statement inventory and transaction
   listing commands.
@@ -354,6 +358,30 @@ imports whose statement balance date is at least as current as the stored
 snapshot. Historical `statement_balances` or per-row `transaction_balances`
 belong to the separate balance-history design.
 
+### 5.2.1 `account_statement_refs`
+
+`account_statement_refs` stores parser-visible account identifiers that are not
+the canonical account number. Examples include last-four values, masked account
+references, or product identifiers for statements that expose only a bank or
+product identity.
+
+| Column | Type | Notes |
+|---|---|---|
+| `account_statement_ref_id` | INTEGER PK | Surrogate key |
+| `account_id` | INTEGER FK | References `accounts.account_id` |
+| `source_format` | TEXT NOT NULL | Parser format such as `boa_pdf`, or `*` for any |
+| `ref_type` | TEXT NOT NULL | `full_account_number`, `last4`, `masked_account`, or `product` |
+| `ref_value` | TEXT NOT NULL | Original configured value |
+| `normalized_ref_value` | TEXT NOT NULL | Matching value normalized by ref type |
+| `created_at` | DATETIME NOT NULL | |
+| `updated_at` | DATETIME NOT NULL | |
+
+The import resolver combines parser-detected bank, currency, account-number
+signals, and `account_statement_refs`. A statement may auto-route only when
+the extracted content maps to exactly one configured account. If the user
+passes `--account-id` and the document identity maps to another account, the
+import fails cleanly.
+
 ### 5.3 `categories`
 
 | Column | Type | Notes |
@@ -524,15 +552,15 @@ Phase 1 imports an explicit `--file` path. Phase 2 adds `inbox/` scanning and
 removes successfully imported inbox-owned source files after archival. Exact
 duplicates of prior successful imports are detected by SHA-256 hash before
 parser work, recorded as `duplicate` attempts, and moved to `duplicates/` as a
-temporary conservative preservation policy. Bank of America PDFs can be
-auto-routed by full statement account number when it matches exactly one
-configured BOA USD account. ICICI `.xls` files can be auto-routed by full
-statement account number when it matches exactly one configured ICICI INR
-account. HDFC `.xls` files follow the same routing model for configured HDFC
-INR accounts. CSV inbox imports still require an explicit account id until a
-supported CSV format provides reliable account metadata, except when the CSV
-file is an exact duplicate of a prior successful import. Automatic watching
-comes later.
+temporary conservative preservation policy. Import routing must be based on
+content extracted from the file, never the source filename. Bank of America
+PDFs, ICICI `.xls` files, and HDFC `.xls` files can be auto-routed by
+parser-detected account identity when it maps to exactly one configured
+account. `account_statement_refs` extends that identity model to statement
+formats that expose only last-four, masked, or product-level identifiers. CSV
+inbox imports still require an explicit account id until a supported CSV format
+provides reliable account metadata, except when the CSV file is an exact
+duplicate of a prior successful import. Automatic watching comes later.
 
 All explicit-file and inbox imports can run with `--dry-run`. Dry-run mode
 uses the same parser, account validation, transaction hashing, duplicate
@@ -561,8 +589,9 @@ processed files, duplicate files, or remove inbox files.
    `.xls` imports use the analogous HDFC columns and skip masked separator and
    statement-summary rows.
 6. Parse into staged transactions.
-7. For PDF imports, validate that the full account number in the statement
-   matches the selected configured account.
+7. Resolve the parsed statement identity to a configured account. If
+   `--account-id` was supplied, treat it as an assertion: when the document
+   exposes an account identity that maps to a different account, fail cleanly.
 8. Copy the successfully recognized source file to the managed archive using
    the canonical filename and `processed/<bank-slug>/<year>/<month>/`
    hierarchy. Explicit source files are left untouched; successful inbox-owned
@@ -610,7 +639,7 @@ Warnings:                 0
 
 ### 6.4 Bank & Account Inference
 
-Bank parsers own their inference rules because signals are bank-specific:
+Bank parsers own their extraction rules because signals are bank-specific:
 
 - known CSV headers
 - known statement title/header patterns
@@ -618,9 +647,11 @@ Bank parsers own their inference rules because signals are bank-specific:
   the statement account number before matching it to `accounts.account_number`
 - currency and date formats
 
-If confidence is low, the command fails with a clear message. Later phases may
-allow explicit overrides such as `--bank` or `--account` for formats that cannot
-be inferred safely.
+The generic resolver owns account matching after parser extraction. It combines
+bank, currency, full account numbers, and configured `account_statement_refs`.
+If confidence is low or multiple accounts match, the command fails with a clear
+message. Later phases may allow explicit overrides such as `--bank` or
+`--account` for formats that cannot be inferred safely.
 
 ---
 
@@ -828,6 +859,10 @@ bankbuddy account add
 bankbuddy account list
 bankbuddy account summary
 bankbuddy account show ACCOUNT_ID
+bankbuddy account ref add --account-id ACCOUNT_ID --type TYPE --value VALUE
+bankbuddy account ref add --account-id ACCOUNT_ID --type TYPE --value VALUE --source-format FORMAT
+bankbuddy account ref list
+bankbuddy account ref remove REF_ID
 bankbuddy export sqlite --output FILE
 bankbuddy export sqlite --output FILE --force
 ```

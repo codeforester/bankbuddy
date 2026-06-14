@@ -13,6 +13,10 @@ from pathlib import Path
 import re
 import sqlite3
 
+from bankbuddy.account_refs import AccountStatementRefError
+from bankbuddy.account_refs import StatementAccountRef
+from bankbuddy.account_refs import resolve_statement_account_ref
+from bankbuddy.account_refs import statement_refs_for_account_number
 from bankbuddy.currency import parse_amount
 from bankbuddy.database import connect_database, initialize_database
 from bankbuddy.import_files import ImportFileMetadata
@@ -51,6 +55,7 @@ class ParsedStatement:
     transactions: list[ParsedTransaction]
     latest_balance_minor_units: int | None = None
     latest_balance_as_of_date: str | None = None
+    statement_refs: tuple[StatementAccountRef, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1433,6 +1438,7 @@ def plan_parsed_statement_import(
         if account is None:
             raise ImportFailure(f"Account id {account_id} is not configured.")
         validate_parsed_statement_account(
+            conn,
             account,
             parsed_statement=parsed_statement,
             import_label=import_label,
@@ -1658,6 +1664,7 @@ def import_parsed_statement(
         if account is None:
             raise ImportFailure(f"Account id {account_id} is not configured.")
         validate_parsed_statement_account(
+            conn,
             account,
             parsed_statement=parsed_statement,
             import_label=import_label,
@@ -1794,6 +1801,7 @@ def import_parsed_statement(
 
 
 def validate_parsed_statement_account(
+    conn: sqlite3.Connection,
     account: sqlite3.Row,
     *,
     parsed_statement: ParsedStatement,
@@ -1824,7 +1832,34 @@ def validate_parsed_statement_account(
             f"{parsed_statement.bank_name} {import_label} import requires a "
             f"{parsed_statement.bank_name} {parsed_statement.currency} account."
         )
-    if configured_account_number != statement_account_number:
+    try:
+        matched_ref = resolve_statement_account_ref(
+            conn,
+            bank_name=parsed_statement.bank_name,
+            currency=parsed_statement.currency,
+            source_format=source_format,
+            statement_refs=parsed_statement_refs(parsed_statement),
+        )
+    except AccountStatementRefError as exc:
+        raise ImportFailure(str(exc)) from exc
+
+    if matched_ref is not None:
+        if matched_ref.account_id != int(account["account_id"]):
+            raise ImportFailure(
+                f"{parsed_statement.bank_name} {import_label} statement reference "
+                f"maps to account {matched_ref.account_id}, not account "
+                f"{account['account_id']}."
+            )
+        log_debug(
+            logger,
+            "source_format=%s account_ref_match account_id=%s ref_type=%s",
+            source_format,
+            account["account_id"],
+            matched_ref.ref_type,
+        )
+        return
+
+    if statement_account_number and configured_account_number != statement_account_number:
         raise ImportFailure(
             f"{parsed_statement.bank_name} {import_label} account number does not "
             "match configured account."
@@ -1868,6 +1903,94 @@ def update_latest_account_balance(
             parsed_statement.latest_balance_as_of_date,
         ),
     )
+
+
+def parsed_statement_refs(
+    parsed_statement: ParsedStatement,
+) -> tuple[StatementAccountRef, ...]:
+    """Return parser-provided and account-number-derived statement refs."""
+
+    refs: list[StatementAccountRef] = list(parsed_statement.statement_refs)
+    refs.extend(statement_refs_for_account_number(parsed_statement.account_number))
+    return tuple(refs)
+
+
+def resolve_statement_account_id(
+    paths: AppPaths,
+    *,
+    bank_name: str,
+    currency: str,
+    source_format: str,
+    account_number: str | None = None,
+    statement_refs: tuple[StatementAccountRef, ...] = (),
+) -> int | None:
+    """Resolve statement content to one configured account id."""
+
+    initialize_database(paths)
+    refs = list(statement_refs)
+    refs.extend(statement_refs_for_account_number(account_number))
+    with connect_database(paths) as conn:
+        try:
+            matched_ref = resolve_statement_account_ref(
+                conn,
+                bank_name=bank_name,
+                currency=currency,
+                source_format=source_format,
+                statement_refs=tuple(refs),
+            )
+        except AccountStatementRefError as exc:
+            raise ImportFailure(str(exc)) from exc
+        if matched_ref is not None:
+            return matched_ref.account_id
+        if account_number and normalize_account_number(account_number):
+            return None
+        return unique_account_id_for_bank_currency(
+            conn,
+            bank_name=bank_name,
+            currency=currency,
+        )
+
+
+def resolve_parsed_statement_account_id(
+    paths: AppPaths,
+    *,
+    parsed_statement: ParsedStatement,
+    source_format: str,
+) -> int | None:
+    """Resolve a parsed statement to one configured account id."""
+
+    return resolve_statement_account_id(
+        paths,
+        bank_name=parsed_statement.bank_name,
+        currency=parsed_statement.currency,
+        source_format=source_format,
+        account_number=parsed_statement.account_number,
+        statement_refs=parsed_statement.statement_refs,
+    )
+
+
+def unique_account_id_for_bank_currency(
+    conn: sqlite3.Connection,
+    *,
+    bank_name: str,
+    currency: str,
+) -> int | None:
+    """Return the unique account for a bank/currency pair when one exists."""
+
+    rows = conn.execute(
+        """
+        select accounts.account_id
+        from accounts
+        join banks using (bank_id)
+        where banks.bank_name = ?
+          and accounts.currency = ?
+        order by accounts.account_id
+        """,
+        (bank_name, currency),
+    ).fetchall()
+    if len(rows) != 1:
+        return None
+    return int(rows[0]["account_id"])
 
 
 def validate_boa_import_account(

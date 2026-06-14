@@ -66,6 +66,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "import_attempts",
         "category_rules",
         "budgets",
+        "account_statement_refs",
     }.issubset(table_names)
     assert migration_versions == [
         "0001_core_schema",
@@ -75,6 +76,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "0005_account_balances_and_value_dates",
         "0006_normalize_bank_country_codes",
         "0007_add_rental_income_category",
+        "0008_account_statement_refs",
     ]
     assert categories == {
         "Dining": "expense",
@@ -108,7 +110,7 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
         ).fetchone()[0]
         category_count = conn.execute("select count(*) from categories").fetchone()[0]
 
-    assert migration_count == 7
+    assert migration_count == 8
     assert category_count == 16
 
 
@@ -225,7 +227,29 @@ def test_schema_tracks_value_date_and_latest_account_balance(tmp_path) -> None:
         "0005_account_balances_and_value_dates",
         "0006_normalize_bank_country_codes",
         "0007_add_rental_income_category",
+        "0008_account_statement_refs",
     ]
+
+
+def test_schema_tracks_account_statement_refs(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path)
+
+    initialize_database(paths)
+
+    with sqlite3.connect(paths.database) as conn:
+        columns = {
+            row[1]: row[2]
+            for row in conn.execute(
+                "pragma table_info(account_statement_refs)"
+            ).fetchall()
+        }
+
+    assert columns["account_statement_ref_id"] == "INTEGER"
+    assert columns["account_id"] == "INTEGER"
+    assert columns["source_format"] == "TEXT"
+    assert columns["ref_type"] == "TEXT"
+    assert columns["ref_value"] == "TEXT"
+    assert columns["normalized_ref_value"] == "TEXT"
 
 
 def test_rental_income_category_migration_backfills_existing_databases(
