@@ -65,6 +65,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "0002_import_file_metadata",
         "0003_import_attempt_account",
         "0004_duplicate_import_attempts",
+        "0005_account_balances_and_value_dates",
     ]
     assert categories == {
         "Dining": "expense",
@@ -97,7 +98,7 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
         ).fetchone()[0]
         category_count = conn.execute("select count(*) from categories").fetchone()[0]
 
-    assert migration_count == 4
+    assert migration_count == 5
     assert category_count == 15
 
 
@@ -178,6 +179,41 @@ def test_import_files_schema_tracks_canonical_archive_metadata(tmp_path) -> None
         "account_ref",
         "source_format",
     }.issubset(columns)
+
+
+def test_schema_tracks_value_date_and_latest_account_balance(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path)
+
+    initialize_database(paths)
+
+    with sqlite3.connect(paths.database) as conn:
+        transaction_columns = {
+            row[1]: row[2]
+            for row in conn.execute("pragma table_info(transactions)").fetchall()
+        }
+        account_columns = {
+            row[1]: row[2]
+            for row in conn.execute("pragma table_info(accounts)").fetchall()
+        }
+        migration_versions = [
+            row[0]
+            for row in conn.execute(
+                "select version from schema_migrations order by version"
+            ).fetchall()
+        ]
+
+    assert transaction_columns["value_date"] == "TEXT"
+    assert account_columns["latest_balance_minor_units"] == "INTEGER"
+    assert account_columns["latest_balance_currency"] == "TEXT"
+    assert account_columns["latest_balance_as_of_date"] == "TEXT"
+    assert account_columns["latest_balance_source_file_id"] == "INTEGER"
+    assert migration_versions == [
+        "0001_core_schema",
+        "0002_import_file_metadata",
+        "0003_import_attempt_account",
+        "0004_duplicate_import_attempts",
+        "0005_account_balances_and_value_dates",
+    ]
 
 
 def test_apply_migrations_rolls_back_failed_migration(tmp_path, monkeypatch) -> None:

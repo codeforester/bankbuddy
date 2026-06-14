@@ -5,6 +5,7 @@ import pytest
 from bankbuddy.accounts import add_account
 from bankbuddy.database import connect_database
 from bankbuddy.imports import ImportFailure
+import bankbuddy.imports as imports
 from bankbuddy.imports import extract_boa_pdf_account_number
 from bankbuddy.imports import extract_boa_pdf_statement_period
 from bankbuddy.imports import extract_pdf_text
@@ -32,6 +33,39 @@ Date Description Amount Balance
 06/10 COFFEE SHOP -4.25 100.00
 06/11 PAYROLL 2,500.00 2,600.00
 """
+
+ICICI_XLS_ROWS = [
+    ["ICICI Bank"],
+    ["Statement for Account Number", "1234 5678 9012"],
+    ["Statement Period", "01/04/2025", "to", "30/04/2025"],
+    [
+        "Value Date",
+        "Transaction Date",
+        "Cheque Number",
+        "Transaction Remarks",
+        "Withdrawal Amount(INR)",
+        "Deposit Amount(INR)",
+        "Balance(INR)",
+    ],
+    [
+        "01/04/2025",
+        "02/04/2025",
+        "",
+        "ATM CASH WITHDRAWAL",
+        "1,000.00",
+        "",
+        "24,000.00",
+    ],
+    [
+        "30/04/2025",
+        "30/04/2025",
+        "123456",
+        "INTEREST CREDIT",
+        "",
+        "50.25",
+        "24,050.25",
+    ],
+]
 
 
 def write_boa_csv(tmp_path: Path, content: str = BOA_CSV) -> Path:
@@ -105,6 +139,132 @@ def test_parse_boa_csv_normalizes_rows(tmp_path) -> None:
     assert rows[0].normalized_description == "coffee shop"
     assert rows[0].amount_minor_units == -425
     assert rows[1].amount_minor_units == 250000
+
+
+def test_parse_icici_xls_rows_normalizes_statement_metadata_and_rows() -> None:
+    statement = imports.parse_icici_xls_rows(ICICI_XLS_ROWS)
+
+    assert statement.bank_name == "ICICI Bank"
+    assert statement.account_number == "123456789012"
+    assert statement.currency == "INR"
+    assert statement.statement_start_date == "2025-04-01"
+    assert statement.statement_end_date == "2025-04-30"
+    assert statement.latest_balance_minor_units == 2405025
+    assert statement.latest_balance_as_of_date == "2025-04-30"
+
+    assert len(statement.transactions) == 2
+    assert statement.transactions[0].value_date == "2025-04-01"
+    assert statement.transactions[0].transaction_date == "2025-04-02"
+    assert statement.transactions[0].description == "ATM CASH WITHDRAWAL"
+    assert statement.transactions[0].normalized_description == "atm cash withdrawal"
+    assert statement.transactions[0].amount_minor_units == -100000
+    assert statement.transactions[0].balance_after_minor_units == 2400000
+    assert statement.transactions[1].check_number == "123456"
+    assert statement.transactions[1].amount_minor_units == 5025
+
+
+def test_parse_icici_xls_rows_rejects_balance_discontinuity() -> None:
+    rows = [list(row) for row in ICICI_XLS_ROWS]
+    rows[-1][-1] = "99,999.99"
+
+    with pytest.raises(ImportFailure) as exc_info:
+        imports.parse_icici_xls_rows(rows)
+
+    assert "balance does not reconcile" in str(exc_info.value)
+
+
+def test_parse_icici_xls_rows_treats_zero_filled_amount_column_as_empty() -> None:
+    rows = [list(row) for row in ICICI_XLS_ROWS]
+    rows[4][5] = "0.00"
+    rows[5][4] = "0.00"
+
+    statement = imports.parse_icici_xls_rows(rows)
+
+    assert statement.transactions[0].amount_minor_units == -100000
+    assert statement.transactions[1].amount_minor_units == 5025
+
+
+def test_parse_icici_xls_rows_folds_description_continuation_rows() -> None:
+    rows = [list(row) for row in ICICI_XLS_ROWS]
+    rows.insert(
+        5,
+        ["", "", "", "ADDITIONAL REFERENCE DETAILS", "", "", ""],
+    )
+
+    statement = imports.parse_icici_xls_rows(rows)
+
+    assert len(statement.transactions) == 2
+    assert (
+        statement.transactions[0].description
+        == "ATM CASH WITHDRAWAL ADDITIONAL REFERENCE DETAILS"
+    )
+    assert (
+        statement.transactions[0].normalized_description
+        == "atm cash withdrawal additional reference details"
+    )
+    assert statement.transactions[0].source_row_key == "5,6"
+
+
+def test_import_icici_xls_updates_account_latest_balance(tmp_path, monkeypatch) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    xls_path = tmp_path / "icici.xls"
+    xls_path.write_bytes(b"synthetic xls placeholder")
+    account = add_account(
+        paths,
+        bank_name="ICICI Bank",
+        country="India",
+        account_number="123456789012",
+        account_type="savings",
+        currency="INR",
+        display_name="NRO Savings",
+    )
+    monkeypatch.setattr(
+        imports,
+        "parse_icici_xls",
+        lambda _path: imports.parse_icici_xls_rows(ICICI_XLS_ROWS),
+    )
+
+    summary = imports.import_icici_xls(paths, xls_path, account_id=account.account_id)
+
+    assert summary.bank_name == "ICICI Bank"
+    assert summary.rows_parsed == 2
+    assert summary.rows_imported == 2
+    assert summary.latest_balance_minor_units == 2405025
+    assert summary.latest_balance_currency == "INR"
+    assert summary.latest_balance_as_of_date == "2025-04-30"
+    with connect_database(paths) as conn:
+        imported_rows = conn.execute(
+            """
+            select transaction_date, value_date, amount_minor_units, currency, description
+            from transactions
+            order by transaction_id
+            """
+        ).fetchall()
+        account_row = conn.execute(
+            """
+            select
+                latest_balance_minor_units,
+                latest_balance_currency,
+                latest_balance_as_of_date,
+                latest_balance_source_file_id
+            from accounts
+            where account_id = ?
+            """,
+            (account.account_id,),
+        ).fetchone()
+        file_row = conn.execute(
+            "select file_id, source_format from import_files"
+        ).fetchone()
+
+    assert [tuple(row) for row in imported_rows] == [
+        ("2025-04-02", "2025-04-01", -100000, "INR", "ATM CASH WITHDRAWAL"),
+        ("2025-04-30", "2025-04-30", 5025, "INR", "INTEREST CREDIT"),
+    ]
+    assert account_row["latest_balance_minor_units"] == 2405025
+    assert account_row["latest_balance_currency"] == "INR"
+    assert account_row["latest_balance_as_of_date"] == "2025-04-30"
+    assert account_row["latest_balance_source_file_id"] == file_row["file_id"]
+    assert file_row["source_format"] == "icici_xls"
 
 
 def test_normalize_account_number_keeps_digits_only() -> None:

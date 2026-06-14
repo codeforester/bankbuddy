@@ -29,9 +29,17 @@ bankbuddy account add \
   --account-number "<actual-number>" \
   --type checking \
   --currency USD
+bankbuddy account add \
+  --bank "ICICI Bank" \
+  --country India \
+  --account-number "<actual-number>" \
+  --type savings \
+  --currency INR
 bankbuddy account list
 bankbuddy import --dry-run --file path/to/boa.pdf --account-id 1
 bankbuddy import --file path/to/boa.pdf --account-id 1
+bankbuddy import --dry-run --file path/to/icici.xls --account-id 2
+bankbuddy import --file path/to/icici.xls --account-id 2
 bankbuddy import --dry-run inbox
 bankbuddy import inbox
 bankbuddy import inbox --account-id 1
@@ -140,11 +148,19 @@ files when available. BOA PDF period extraction supports the statement-period
 header and the account header found in eStatement text. BOA PDF files in
 `~/BankBuddy/inbox/` can be routed to a configured account by statement account
 number; CSV inbox imports still require `--account-id` unless the file is an
-exact duplicate of a prior successful import. Successful imports are copied into
-`~/BankBuddy/processed/<bank>/<year>/<month>/` with canonical filenames while
-the original source files are left untouched. Exact duplicate inbox files are
-identified by SHA-256 file hash before parser work, recorded as `duplicate`
-attempts, and moved to `~/BankBuddy/duplicates/<bank>/<year>/<month>/` for now.
+exact duplicate of a prior successful import.
+
+ICICI Bank imports support old Excel `.xls` statement exports. ICICI `.xls`
+files can be routed from `inbox/` by the full account number in the spreadsheet
+when exactly one configured ICICI INR account matches. Successful ICICI imports
+store transaction value dates and update the account latest balance snapshot
+from the statement balance.
+
+Successful imports are copied into `~/BankBuddy/processed/<bank>/<year>/<month>/`
+with canonical filenames while the original explicit source files are left
+untouched. Exact duplicate inbox files are identified by SHA-256 file hash
+before parser work, recorded as `duplicate` attempts, and moved to
+`~/BankBuddy/duplicates/<bank>/<year>/<month>/` for now.
 Use `bankbuddy import --dry-run ...` to preview parser, duplicate, and archive
 actions without writing transactions, import history, processed files, duplicate
 files, or removing inbox files.

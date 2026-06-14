@@ -23,6 +23,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added ICICI Bank `.xls` statement imports with INR transactions, value-date
+  storage, row-balance sanity checks, inbox account auto-routing, and
+  account-level latest balance snapshots with source file provenance.
 - Added `bankbuddy tx duplicates` to reconstruct rows skipped as duplicate
   transactions and show each parsed candidate next to the stored transaction
   that matched it.

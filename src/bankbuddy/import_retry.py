@@ -9,12 +9,16 @@ import sqlite3
 from bankbuddy.database import connect_database, initialize_database
 from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import ImportSummary
+from bankbuddy.imports import ICICI_SOURCE_FORMAT
+from bankbuddy.imports import ParsedStatement
 from bankbuddy.imports import account_number_suffix
 from bankbuddy.imports import extract_boa_pdf_account_number
 from bankbuddy.imports import extract_pdf_text
 from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
+from bankbuddy.imports import import_icici_xls
 from bankbuddy.imports import normalize_account_number
+from bankbuddy.imports import parse_icici_xls
 from bankbuddy.paths import AppPaths
 
 
@@ -72,6 +76,27 @@ def retry_import_attempt(
             retry_path,
             account_id=int(retry_account_id),
             extracted_text=extracted_text,
+            logger=logger,
+        )
+
+    if source_format == ICICI_SOURCE_FORMAT:
+        if retry_account_id is None:
+            parsed_statement = parse_icici_xls(retry_path)
+            retry_account_id = account_id_for_parsed_statement(
+                paths,
+                parsed_statement,
+            )
+            if retry_account_id is None:
+                account_suffix = account_number_suffix(parsed_statement.account_number)
+                raise RetryFailure(
+                    "No configured account matches "
+                    f"{parsed_statement.bank_name} XLS account ending "
+                    f"{account_suffix}."
+                )
+        return import_icici_xls(
+            paths,
+            retry_path,
+            account_id=int(retry_account_id),
             logger=logger,
         )
 
@@ -145,6 +170,38 @@ def account_id_for_boa_pdf_account_number(
             order by accounts.account_id
             """,
             ("Bank of America", "USD"),
+        ).fetchall()
+
+    matches = [
+        int(row["account_id"])
+        for row in rows
+        if normalize_account_number(row["account_number"]) == normalized_account_number
+    ]
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def account_id_for_parsed_statement(
+    paths: AppPaths,
+    parsed_statement: ParsedStatement,
+) -> int | None:
+    """Return the configured account id matching parsed statement metadata."""
+
+    normalized_account_number = normalize_account_number(parsed_statement.account_number)
+    with connect_database(paths) as conn:
+        rows = conn.execute(
+            """
+            select
+                accounts.account_id,
+                accounts.account_number
+            from accounts
+            join banks using (bank_id)
+            where banks.bank_name = ?
+              and accounts.currency = ?
+            order by accounts.account_id
+            """,
+            (parsed_statement.bank_name, parsed_statement.currency),
         ).fetchall()
 
     matches = [
