@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.22
+**Version:** 1.23
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.23: Added the manual categorization MVP: `category list`,
+  `tx categorize TX_ID CATEGORY`, `tx list --category`, and
+  `tx list --uncategorized`. Transaction default and ledger views now include
+  the assigned category while compact view remains narrow.
 - v1.22: Added ICICI Bank `.xls` statement import as the first INR bank parser.
   ICICI imports use the spreadsheet account number for validation/routing, store
   transaction value dates, use row balances for sanity checks, and update an
@@ -655,6 +659,8 @@ bankbuddy tx list --sort FIELD --order asc|desc
 bankbuddy tx list --view default|compact|ledger
 bankbuddy tx list --format pretty|csv|tsv
 bankbuddy tx list --summary
+bankbuddy tx list --category CATEGORY
+bankbuddy tx list --uncategorized
 bankbuddy tx categorize TX_ID CATEGORY
 ```
 
@@ -674,7 +680,10 @@ full account number.
 
 All transaction-list filters compose with each other. For example, a user can
 combine `--bank`, `--currency`, `--account-last4`, `--direction`, date range,
-sort, view, format, and summary flags in one command.
+category, sort, view, format, and summary flags in one command. `--category`
+matches an existing category name case-insensitively. `--uncategorized` selects
+transactions still assigned to the built-in Uncategorized category. `--category`
+and `--uncategorized` are mutually exclusive.
 
 `tx list --sort` accepts comma-separated public fields: `id`, `date`, `amount`,
 `account`, `currency`, and `description`. Field-level directions such as
@@ -682,23 +691,17 @@ sort, view, format, and summary flags in one command.
 fields without an explicit direction. The default order remains
 `date:asc,id:asc` when no sort expression is provided.
 
-`tx list --view default` keeps the standard transaction table, `--view compact`
-shows a narrower date/amount/currency/description table, and `--view ledger`
-adds a debit/credit type column. `tx list --summary` prints transaction count,
-debits, credits, and net totals grouped by currency for the same filtered rows.
+`tx list --view default` keeps the standard transaction table with category,
+`--view compact` shows a narrower date/amount/currency/description table, and
+`--view ledger` adds a debit/credit type column while also showing category.
+`tx list --summary` prints transaction count, debits, credits, and net totals
+grouped by currency for the same filtered rows.
 
 `tx list --format pretty` is the default and renders aligned columns for human
 reading. `--format csv` and `--format tsv` use the selected `--view` columns
 with lowercase stable headers for machine-readable output. `--summary` is only
 supported with `--format pretty`; CSV and TSV intentionally remain one clean
 transaction table. JSON and YAML are out of scope for transaction listing.
-
-Later transaction commands and filters:
-
-```text
-bankbuddy tx list --category CATEGORY
-bankbuddy tx list --uncategorized
-```
 
 ### Statement Inventory Commands
 
@@ -779,6 +782,11 @@ until category management exists.
 
 ```text
 bankbuddy category list
+```
+
+Later category commands:
+
+```text
 bankbuddy category add NAME --kind income|expense
 bankbuddy category delete NAME
 bankbuddy category rules list
@@ -940,7 +948,8 @@ Cloud sync and automated backup are out of scope for early phases.
 - transaction hash deduplication with visible summary
 - `import history`
 - `tx list` with account, bank, currency, date, debit/credit, sort, view,
-  format, and summary controls
+  format, category, uncategorized, and summary controls
+- `category list` and manual `tx categorize`
 - `audit statements` for imported statement coverage sanity checks
 - canonical import file names and managed archive copies for explicit imports
 - `report spending`
@@ -961,7 +970,6 @@ Cloud sync and automated backup are out of scope for early phases.
 ### Phase 3 — Categorization and Budgets
 
 - category rule management
-- manual transaction categorization
 - suggested rules from corrections
 - budget CRUD
 - monthly and annual budget reports

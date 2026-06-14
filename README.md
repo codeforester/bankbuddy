@@ -70,6 +70,10 @@ bankbuddy tx list --view ledger
 bankbuddy tx list --format csv
 bankbuddy tx list --format tsv
 bankbuddy tx list --summary
+bankbuddy category list
+bankbuddy tx categorize 1 Groceries
+bankbuddy tx list --category Groceries
+bankbuddy tx list --uncategorized
 bankbuddy tx list --account-id 1 --from 2026-04-01 --to 2026-05-31
 bankbuddy audit statements --years 2025
 bankbuddy audit statements --years 2024,2025 --account-last4 1145
@@ -128,9 +132,15 @@ Primary command output goes to stdout. Runtime diagnostics go to stderr, and
 debug logs avoid full account numbers and raw statement contents.
 
 `bankbuddy tx list` can filter by `--account-id`, `--bank`, `--currency`,
-`--account-number`, `--account-last4`, date range, and debit/credit direction.
-Full account numbers are accepted for filtering, but transaction output keeps
-using display names or masked account suffixes.
+`--account-number`, `--account-last4`, date range, debit/credit direction,
+`--category`, and `--uncategorized`. Full account numbers are accepted for
+filtering, but transaction output keeps using display names or masked account
+suffixes.
+
+`bankbuddy category list` shows the built-in categories. Use
+`bankbuddy tx categorize TRANSACTION_ID CATEGORY` to manually assign one
+transaction to an existing category, then review with `tx list --category ...`
+or `tx list --uncategorized`.
 
 `bankbuddy statements summary` and `bankbuddy statements list` inspect imported
 statement-file inventory. `summary` groups successful statement files by

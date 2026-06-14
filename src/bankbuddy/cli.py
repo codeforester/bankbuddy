@@ -24,6 +24,8 @@ from bankbuddy.accounts import masked_account_number
 from bankbuddy.audit import AccountStatementAudit
 from bankbuddy.audit import audit_statement_coverage
 from bankbuddy.audit import AuditFilterError
+from bankbuddy.categories import Category
+from bankbuddy.categories import list_categories
 from bankbuddy.database import initialize_database
 from bankbuddy.duplicate_diagnostics import DuplicateDiagnosticError
 from bankbuddy.duplicate_diagnostics import DuplicateDiagnosticRow
@@ -60,6 +62,7 @@ from bankbuddy.statements import StatementFilterError
 from bankbuddy.statements import StatementListRow
 from bankbuddy.statements import statement_summary
 from bankbuddy.statements import StatementSummaryRow
+from bankbuddy.transactions import categorize_transaction
 from bankbuddy.transactions import format_minor_units
 from bankbuddy.transactions import list_transactions
 from bankbuddy.transactions import summarize_transactions
@@ -372,6 +375,40 @@ def format_account_balance(account: AccountSummary) -> str:
 
 
 @main.group()
+def category() -> None:
+    """Inspect transaction categories."""
+
+
+@category.command("list")
+@click.pass_context
+def category_list(ctx: click.Context) -> None:
+    """List available transaction categories."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    rows = list_categories(paths)
+    runtime.log.debug("category_list count=%s", len(rows))
+    render_categories(rows)
+
+
+def render_categories(rows: list[Category]) -> None:
+    """Render available categories."""
+
+    render_pretty_table(
+        ["Name", "Kind", "System"],
+        [
+            [
+                row.category_name,
+                row.category_kind,
+                "yes" if row.is_system else "no",
+            ]
+            for row in rows
+        ],
+        ["left", "left", "left"],
+    )
+
+
+@main.group()
 def tx() -> None:
     """Inspect imported transactions."""
 
@@ -391,6 +428,12 @@ def tx() -> None:
     "--direction",
     type=click.Choice(["debit", "credit"], case_sensitive=False),
     help="Filter by money direction: debit for negative amounts, credit for positive.",
+)
+@click.option("--category", "category_name", help="Filter by transaction category.")
+@click.option(
+    "--uncategorized",
+    is_flag=True,
+    help="Show only uncategorized transactions.",
 )
 @click.option("--sort", "sort_expression", help="Comma-separated sort fields.")
 @click.option(
@@ -427,6 +470,8 @@ def tx_list(
     date_from: str | None,
     date_to: str | None,
     direction: str | None,
+    category_name: str | None,
+    uncategorized: bool,
     sort_expression: str | None,
     order: str,
     view: str,
@@ -450,6 +495,8 @@ def tx_list(
             date_from=normalized_date_from,
             date_to=normalized_date_to,
             direction=direction.lower() if direction else None,
+            category_name=category_name,
+            uncategorized=uncategorized,
             sort=sort_expression,
             default_order=order.lower(),
         )
@@ -466,7 +513,8 @@ def tx_list(
     runtime.log.debug(
         "tx_list count=%s account_id=%s bank=%s currency=%s "
         "account_number_suffix=%s account_last4=%s date_from=%s date_to=%s "
-        "direction=%s sort=%s order=%s view=%s format=%s summary=%s",
+        "direction=%s category=%s uncategorized=%s sort=%s order=%s "
+        "view=%s format=%s summary=%s",
         len(rows),
         account_id,
         bank_name,
@@ -476,6 +524,8 @@ def tx_list(
         normalized_date_from,
         normalized_date_to,
         direction,
+        category_name,
+        uncategorized,
         sort_expression,
         order,
         normalized_view,
@@ -501,6 +551,39 @@ def tx_list(
     if summary:
         click.echo("")
         render_transaction_summary(rows)
+
+
+@tx.command("categorize")
+@click.argument("transaction_id", type=int)
+@click.argument("category_name")
+@click.pass_context
+def tx_categorize(
+    ctx: click.Context,
+    transaction_id: int,
+    category_name: str,
+) -> None:
+    """Assign one transaction to an existing category."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        update = categorize_transaction(
+            paths,
+            transaction_id=transaction_id,
+            category_name=category_name,
+        )
+    except TransactionFilterError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug(
+        "tx_categorize transaction_id=%s category=%s",
+        update.transaction_id,
+        update.category_name,
+    )
+    click.echo(
+        f"Updated transaction {update.transaction_id} category to "
+        f"{update.category_name}."
+    )
 
 
 @tx.command("duplicates")
@@ -688,6 +771,12 @@ def transaction_columns(view: str) -> list[TransactionColumn]:
             "left",
             lambda row: row.currency,
         ),
+        "category": TransactionColumn(
+            "Category",
+            "category",
+            "left",
+            lambda row: row.category_name,
+        ),
         "description": TransactionColumn(
             "Description",
             "description",
@@ -711,6 +800,7 @@ def transaction_columns(view: str) -> list[TransactionColumn]:
             columns["type"],
             columns["amount"],
             columns["currency"],
+            columns["category"],
             columns["description"],
         ]
     return [
@@ -719,6 +809,7 @@ def transaction_columns(view: str) -> list[TransactionColumn]:
         columns["account"],
         columns["amount"],
         columns["currency"],
+        columns["category"],
         columns["description"],
     ]
 

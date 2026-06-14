@@ -287,6 +287,88 @@ def test_tx_list_filters_by_currency(tmp_path) -> None:
     assert "PAYROLL" in result.output
 
 
+def test_category_list_outputs_seeded_categories(tmp_path) -> None:
+    result = CliRunner().invoke(
+        main,
+        ["category", "list"],
+        env={"BANKBUDDY_HOME": str(tmp_path / "home")},
+    )
+
+    assert result.exit_code == 0
+    assert "Name            | Kind    | System" in result.output
+    assert "Groceries" in result.output
+    assert "Uncategorized" in result.output
+
+
+def test_tx_categorize_updates_transaction_category(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    categorize_result = CliRunner().invoke(
+        main,
+        ["tx", "categorize", "1", "Groceries"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+    list_result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--category", "Groceries"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert categorize_result.exit_code == 0
+    assert "Updated transaction 1 category to Groceries." in categorize_result.output
+    assert list_result.exit_code == 0
+    assert "COFFEE SHOP" in list_result.output
+    assert "PAYROLL" not in list_result.output
+    assert "Groceries" in list_result.output
+
+
+def test_tx_list_filters_uncategorized_transactions(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+    runner = CliRunner()
+    runner.invoke(
+        main,
+        ["tx", "categorize", "1", "Groceries"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    result = runner.invoke(
+        main,
+        ["tx", "list", "--uncategorized"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "PAYROLL" in result.output
+    assert "COFFEE SHOP" not in result.output
+    assert "Uncategorized" in result.output
+
+
+def test_tx_categorize_rejects_unknown_category(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "categorize", "1", "Made Up"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 1
+    assert "Category not found: Made Up" in result.output
+
+
+def test_tx_list_rejects_category_and_uncategorized_together(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--category", "Groceries", "--uncategorized"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 1
+    assert "Use either --category or --uncategorized, not both" in result.output
+
+
 def test_tx_list_filters_by_account_number(tmp_path) -> None:
     home, _account = seed_transactions(tmp_path)
 
@@ -417,7 +499,9 @@ def test_tx_list_outputs_ledger_view(tmp_path) -> None:
 
     assert result.exit_code == 0
     assert "ID | Date       | Account" in result.output
-    assert "Type   |  Amount | Currency | Description" in result.output
+    assert "Type   |  Amount | Currency | Category      | Description" in (
+        result.output
+    )
     assert " 1 | 2026-06-10 | Everyday Checking | debit" in (
         result.output
     )
@@ -473,9 +557,9 @@ def test_tx_list_outputs_csv_format(tmp_path) -> None:
 
     assert result.exit_code == 0
     assert result.output.splitlines() == [
-        "id,date,account,amount,currency,description",
-        "1,2026-06-10,Everyday Checking,-4.25,USD,COFFEE SHOP",
-        "2,2026-06-11,Everyday Checking,2500.00,USD,PAYROLL",
+        "id,date,account,amount,currency,category,description",
+        "1,2026-06-10,Everyday Checking,-4.25,USD,Uncategorized,COFFEE SHOP",
+        "2,2026-06-11,Everyday Checking,2500.00,USD,Uncategorized,PAYROLL",
     ]
 
 
@@ -490,9 +574,15 @@ def test_tx_list_outputs_tsv_format_with_ledger_view(tmp_path) -> None:
 
     assert result.exit_code == 0
     assert result.output.splitlines() == [
-        "id\tdate\taccount\ttype\tamount\tcurrency\tdescription",
-        "1\t2026-06-10\tEveryday Checking\tdebit\t-4.25\tUSD\tCOFFEE SHOP",
-        "2\t2026-06-11\tEveryday Checking\tcredit\t2500.00\tUSD\tPAYROLL",
+        "id\tdate\taccount\ttype\tamount\tcurrency\tcategory\tdescription",
+        (
+            "1\t2026-06-10\tEveryday Checking\tdebit\t-4.25\tUSD\t"
+            "Uncategorized\tCOFFEE SHOP"
+        ),
+        (
+            "2\t2026-06-11\tEveryday Checking\tcredit\t2500.00\tUSD\t"
+            "Uncategorized\tPAYROLL"
+        ),
     ]
 
 

@@ -23,6 +23,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added manual transaction categorization with `bankbuddy category list`,
+  `bankbuddy tx categorize`, `bankbuddy tx list --category`, and
+  `bankbuddy tx list --uncategorized`.
 - Added `bankbuddy account summary` and `bankbuddy account show` for reviewing
   configured accounts, masked account numbers, and latest statement-derived
   balance snapshots with source file metadata.
