@@ -540,15 +540,28 @@ def render_delimited_rows(
 def render_transaction_summary(rows: list[TransactionRow]) -> None:
     """Render per-currency summary totals for transaction rows."""
 
+    headers = ["Currency", "Transactions", "Debits", "Credits", "Net"]
+    aligns: list[ColumnAlign] = ["left", "right", "right", "right", "right"]
+    values = [
+        [
+            row.currency,
+            str(row.transaction_count),
+            format_minor_units(row.debit_minor_units),
+            format_minor_units(row.credit_minor_units),
+            format_minor_units(row.net_minor_units),
+        ]
+        for row in summarize_transactions(rows)
+    ]
+    widths = [
+        max([len(header)] + [len(row[index]) for row in values])
+        for index, header in enumerate(headers)
+    ]
+
     click.echo("Summary")
-    click.echo("Currency  Transactions  Debits  Credits  Net")
-    for row in summarize_transactions(rows):
-        click.echo(
-            f"{row.currency}  {row.transaction_count}  "
-            f"{format_minor_units(row.debit_minor_units)}  "
-            f"{format_minor_units(row.credit_minor_units)}  "
-            f"{format_minor_units(row.net_minor_units)}"
-        )
+    click.echo(format_pretty_row(headers, widths, aligns))
+    click.echo("-+-".join("-" * width for width in widths))
+    for row_values in values:
+        click.echo(format_pretty_row(row_values, widths, aligns))
 
 
 def transaction_type(row: TransactionRow) -> str:

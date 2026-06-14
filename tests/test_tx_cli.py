@@ -280,9 +280,14 @@ def test_tx_list_outputs_summary(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Summary" in result.output
-    assert "Currency  Transactions  Debits  Credits  Net" in result.output
-    assert "USD  2  -4.25  2500.00  2495.75" in result.output
+    lines = result.output.splitlines()
+    summary_index = lines.index("Summary")
+    assert lines[summary_index : summary_index + 4] == [
+        "Summary",
+        "Currency | Transactions | Debits | Credits |     Net",
+        "---------+--------------+--------+---------+--------",
+        "USD      |            2 |  -4.25 | 2500.00 | 2495.75",
+    ]
 
 
 def test_tx_list_summary_respects_direction_filter(tmp_path) -> None:
@@ -295,7 +300,9 @@ def test_tx_list_summary_respects_direction_filter(tmp_path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "USD  1  -4.25  0.00  -4.25" in result.output
+    assert "USD      |            1 |  -4.25 |    0.00 | -4.25" in (
+        result.output
+    )
     assert "PAYROLL" not in result.output
 
 
