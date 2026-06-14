@@ -1,11 +1,13 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.23
+**Version:** 1.24
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.24: Added `Rental Income` as a built-in system income category, with a
+  migration that backfills existing databases.
 - v1.23: Added the manual categorization MVP: `category list`,
   `tx categorize TX_ID CATEGORY`, `tx list --category`, and
   `tx list --uncategorized`. Transaction default and ledger views now include
@@ -360,6 +362,7 @@ Built-in seed categories:
 | Salary | income |
 | Interest | income |
 | Dividends | income |
+| Rental Income | income |
 | Groceries | expense |
 | Dining | expense |
 | Utilities | expense |

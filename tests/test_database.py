@@ -74,6 +74,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "0004_duplicate_import_attempts",
         "0005_account_balances_and_value_dates",
         "0006_normalize_bank_country_codes",
+        "0007_add_rental_income_category",
     ]
     assert categories == {
         "Dining": "expense",
@@ -85,6 +86,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "Insurance": "expense",
         "Interest": "income",
         "Rent / Mortgage": "expense",
+        "Rental Income": "income",
         "Salary": "income",
         "Shopping": "expense",
         "Transfer": "special",
@@ -106,8 +108,8 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
         ).fetchone()[0]
         category_count = conn.execute("select count(*) from categories").fetchone()[0]
 
-    assert migration_count == 6
-    assert category_count == 15
+    assert migration_count == 7
+    assert category_count == 16
 
 
 def test_import_attempts_schema_tracks_account_id(tmp_path) -> None:
@@ -222,7 +224,50 @@ def test_schema_tracks_value_date_and_latest_account_balance(tmp_path) -> None:
         "0004_duplicate_import_attempts",
         "0005_account_balances_and_value_dates",
         "0006_normalize_bank_country_codes",
+        "0007_add_rental_income_category",
     ]
+
+
+def test_rental_income_category_migration_backfills_existing_databases(
+    tmp_path,
+) -> None:
+    paths = resolve_app_paths(tmp_path)
+
+    with connect_database(paths) as conn:
+        conn.execute(SCHEMA_MIGRATIONS_SQL)
+        for migration in iter_migrations():
+            if migration.version == "0007_add_rental_income_category":
+                continue
+            migration_sql = migration.sql.replace(
+                "    ('Rental Income', 'income', 1),\n",
+                "",
+            )
+            conn.executescript(migration_sql)
+            conn.execute(
+                "insert into schema_migrations (version) values (?)",
+                (migration.version,),
+            )
+        conn.commit()
+
+        existing_row = conn.execute(
+            "select category_id from categories where category_name = ?",
+            ("Rental Income",),
+        ).fetchone()
+
+        apply_migrations(conn)
+
+        migrated_row = conn.execute(
+            """
+            select category_kind, is_system
+            from categories
+            where category_name = ?
+            """,
+            ("Rental Income",),
+        ).fetchone()
+
+    assert existing_row is None
+    assert migrated_row["category_kind"] == "income"
+    assert migrated_row["is_system"] == 1
 
 
 def test_country_code_migration_normalizes_legacy_bank_values(tmp_path) -> None:
