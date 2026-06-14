@@ -23,6 +23,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy tx duplicates` to reconstruct rows skipped as duplicate
+  transactions and show each parsed candidate next to the stored transaction
+  that matched it.
 - Added `bankbuddy repair statement-imports --source-format ...` as a generic
   dry-run-first statement repair entrypoint, with Bank of America PDF repairs
   routed through a source-format adapter.
