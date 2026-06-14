@@ -103,6 +103,99 @@ def test_tx_list_filters_by_credit_direction(tmp_path) -> None:
     assert "COFFEE SHOP" not in result.output
 
 
+def test_tx_list_filters_by_bank_name(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--bank", "bank of america"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "COFFEE SHOP" in result.output
+    assert "PAYROLL" in result.output
+
+
+def test_tx_list_filters_by_currency(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--currency", "usd"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "COFFEE SHOP" in result.output
+    assert "PAYROLL" in result.output
+
+
+def test_tx_list_filters_by_account_number(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--account-number", "123 456 789"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "COFFEE SHOP" in result.output
+    assert "PAYROLL" in result.output
+    assert "123456789" not in result.output
+
+
+def test_tx_list_filters_by_account_last4(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--account-last4", "6789"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "COFFEE SHOP" in result.output
+    assert "PAYROLL" in result.output
+
+
+def test_tx_list_rejects_missing_account_last4(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--account-last4", "0000"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code != 0
+    assert "No account matches last four digits: 0000." in result.output
+
+
+def test_tx_list_rejects_ambiguous_account_last4(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+    paths = resolve_app_paths(home)
+    add_account(
+        paths,
+        bank_name="Bank of America",
+        country="US",
+        account_number="987656789",
+        account_type="checking",
+        currency="USD",
+        display_name="Other Checking",
+    )
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--account-last4", "6789"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code != 0
+    assert "Account last four digits are ambiguous: 6789." in result.output
+
+
 def test_tx_list_sorts_by_amount_descending(tmp_path) -> None:
     home, _account = seed_transactions(tmp_path)
 

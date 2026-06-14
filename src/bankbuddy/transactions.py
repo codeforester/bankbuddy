@@ -85,8 +85,12 @@ def list_transactions(
         conditions.append("lower(banks.bank_name) = lower(?)")
         parameters.append(normalized_bank_name)
     if currency is not None:
+        try:
+            normalized_currency = normalize_currency(currency)
+        except ValueError as exc:
+            raise TransactionFilterError(str(exc)) from exc
         conditions.append("transactions.currency = ?")
-        parameters.append(normalize_currency(currency))
+        parameters.append(normalized_currency)
     if account_number is not None:
         add_account_id_filter(
             conditions,

@@ -39,6 +39,7 @@ from bankbuddy.runtime import create_runtime
 from bankbuddy.transactions import format_minor_units
 from bankbuddy.transactions import list_transactions
 from bankbuddy.transactions import summarize_transactions
+from bankbuddy.transactions import TransactionFilterError
 from bankbuddy.transactions import TransactionRow
 from bankbuddy.transactions import TransactionSortError
 
@@ -244,6 +245,13 @@ def tx() -> None:
 
 @tx.command("list")
 @click.option("--account-id", type=int, help="Filter by configured account id.")
+@click.option("--bank", "bank_name", help="Filter by exact bank name.")
+@click.option("--currency", help="Filter by transaction currency.")
+@click.option("--account-number", help="Filter by actual account number.")
+@click.option(
+    "--account-last4",
+    help="Filter by unambiguous account-number suffix.",
+)
 @click.option("--from", "date_from", help="Inclusive start date, YYYY-MM-DD.")
 @click.option("--to", "date_to", help="Inclusive end date, YYYY-MM-DD.")
 @click.option(
@@ -279,6 +287,10 @@ def tx() -> None:
 def tx_list(
     ctx: click.Context,
     account_id: int | None,
+    bank_name: str | None,
+    currency: str | None,
+    account_number: str | None,
+    account_last4: str | None,
     date_from: str | None,
     date_to: str | None,
     direction: str | None,
@@ -298,13 +310,17 @@ def tx_list(
         rows = list_transactions(
             paths,
             account_id=account_id,
+            bank_name=bank_name,
+            currency=currency,
+            account_number=account_number,
+            account_last4=account_last4,
             date_from=normalized_date_from,
             date_to=normalized_date_to,
             direction=direction.lower() if direction else None,
             sort=sort_expression,
             default_order=order.lower(),
         )
-    except TransactionSortError as exc:
+    except (TransactionFilterError, TransactionSortError) as exc:
         raise click.ClickException(str(exc)) from exc
 
     normalized_view = view.lower()
@@ -315,10 +331,15 @@ def tx_list(
         )
 
     runtime.log.debug(
-        "tx_list count=%s account_id=%s date_from=%s date_to=%s direction=%s "
-        "sort=%s order=%s view=%s format=%s summary=%s",
+        "tx_list count=%s account_id=%s bank=%s currency=%s "
+        "account_number_suffix=%s account_last4=%s date_from=%s date_to=%s "
+        "direction=%s sort=%s order=%s view=%s format=%s summary=%s",
         len(rows),
         account_id,
+        bank_name,
+        currency,
+        account_number_suffix(account_number),
+        account_number_suffix(account_last4),
         normalized_date_from,
         normalized_date_to,
         direction,
@@ -347,6 +368,17 @@ def tx_list(
     if summary:
         click.echo("")
         render_transaction_summary(rows)
+
+
+def account_number_suffix(account_number: str | None) -> str | None:
+    """Return a display-safe suffix for logging account filters."""
+
+    if account_number is None:
+        return None
+    digits = "".join(char for char in account_number if char.isdigit())
+    if not digits:
+        return ""
+    return digits[-4:]
 
 
 def render_transaction_rows(
