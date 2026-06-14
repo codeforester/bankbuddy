@@ -82,6 +82,7 @@ PDF_TRANSACTION_LINE_PATTERN = re.compile(
     r"^\s*(?P<date>\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+(?P<rest>.+?)\s*$"
 )
 PDF_MONEY_PATTERN = re.compile(r"-?\$?\d[\d,]*\.\d{2}|\(\$?\d[\d,]*\.\d{2}\)")
+PDF_TRANSACTION_CONTINUATION_PATTERN = re.compile(r"^\s*(?:ID|CO\s+ID)\s*:", re.IGNORECASE)
 BOA_STATEMENT_HEADER_DATE = r"[A-Za-z]+\s+\d{1,2},\s+\d{4}"
 BOA_STATEMENT_PERIOD_PATTERN = re.compile(
     r"Statement\s+Period:\s*"
@@ -156,34 +157,66 @@ def parse_boa_pdf_text(text: str) -> list[ParsedTransaction]:
 
     statement_year = extract_statement_year(text)
     parsed_rows: list[ParsedTransaction] = []
+    pending_transaction_date: str | None = None
+    pending_amount_minor_units: int | None = None
+    pending_source_row_key: str | None = None
+    pending_description_lines: list[str] = []
+
+    def flush_pending_transaction() -> None:
+        nonlocal pending_transaction_date
+        nonlocal pending_amount_minor_units
+        nonlocal pending_source_row_key
+        if (
+            pending_transaction_date is None
+            or pending_amount_minor_units is None
+            or pending_source_row_key is None
+        ):
+            return
+        description = " ".join(pending_description_lines)
+        parsed_rows.append(
+            ParsedTransaction(
+                transaction_date=pending_transaction_date,
+                amount_minor_units=pending_amount_minor_units,
+                description=description,
+                normalized_description=normalize_description(description),
+                check_number=None,
+                source_row_key=pending_source_row_key,
+            )
+        )
+        pending_transaction_date = None
+        pending_amount_minor_units = None
+        pending_source_row_key = None
+        pending_description_lines.clear()
+
     for line_number, line in enumerate(text.splitlines(), start=1):
         match = PDF_TRANSACTION_LINE_PATTERN.match(line)
         if match is None:
+            if pending_description_lines and is_pdf_transaction_continuation(line):
+                pending_description_lines.append(line.strip())
             continue
 
         rest = match.group("rest").strip()
         amount_match = transaction_amount_match(rest)
         if amount_match is None:
+            if pending_description_lines and is_pdf_transaction_continuation(line):
+                pending_description_lines.append(line.strip())
             continue
 
         description = rest[: amount_match.start()].strip()
         if not description:
             continue
 
+        flush_pending_transaction()
         amount = parse_amount(clean_pdf_amount(amount_match.group()), "USD")
-        parsed_rows.append(
-            ParsedTransaction(
-                transaction_date=parse_boa_pdf_date(
-                    match.group("date"),
-                    statement_year=statement_year,
-                ),
-                amount_minor_units=amount.minor_units,
-                description=description,
-                normalized_description=normalize_description(description),
-                check_number=None,
-                source_row_key=str(line_number),
-            )
+        pending_transaction_date = parse_boa_pdf_date(
+            match.group("date"),
+            statement_year=statement_year,
         )
+        pending_amount_minor_units = amount.minor_units
+        pending_source_row_key = str(line_number)
+        pending_description_lines.append(description)
+
+    flush_pending_transaction()
 
     if not parsed_rows:
         raise ImportFailure("Bank of America PDF has no parseable transactions.")
@@ -808,6 +841,12 @@ def transaction_amount_match(rest: str) -> re.Match[str] | None:
     return matches[-1]
 
 
+def is_pdf_transaction_continuation(line: str) -> bool:
+    """Return whether a PDF text line continues the prior transaction row."""
+
+    return PDF_TRANSACTION_CONTINUATION_PATTERN.match(line) is not None
+
+
 def clean_pdf_amount(value: str) -> str:
     """Normalize statement-style amount text for currency parsing."""
 
@@ -843,6 +882,8 @@ def transaction_hash(parsed: ParsedTransaction, *, source_format: str = "boa_csv
         parsed.normalized_description,
         parsed.check_number or "",
     ]
+    if source_format == "boa_pdf":
+        parts.append(parsed.source_row_key)
     return sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 

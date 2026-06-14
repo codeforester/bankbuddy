@@ -9,6 +9,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Fixed
 
+- Fixed Bank of America PDF parsing so continuation lines such as `ID:...`
+  are included in transaction identity instead of collapsing distinct same-day
+  same-amount rows into skipped duplicates.
 - Fixed older Bank of America PDF statement-period extraction for combined
   statement headers and legacy page headers, and made unsupported period
   layouts report the expected header shapes.
