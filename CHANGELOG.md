@@ -14,6 +14,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy tx list --direction debit|credit` for filtering outgoing
+  negative-amount transactions or incoming positive-amount transactions.
 - Added `bankbuddy import --dry-run` for explicit file and inbox imports,
   previewing parser results, duplicate decisions, and canonical archive paths
   without writing database rows or moving statement files.

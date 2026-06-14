@@ -92,6 +92,52 @@ def test_list_transactions_filters_by_account_and_date_range(tmp_path) -> None:
     assert rows[0].account_id == first_account.account_id
 
 
+def test_list_transactions_filters_debits_and_credits(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_boa_account(paths, account_number="123456789")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "boa.csv", BOA_CSV),
+        account_id=account.account_id,
+    )
+
+    debit_rows = list_transactions(paths, direction="debit")
+    credit_rows = list_transactions(paths, direction="credit")
+
+    assert [row.description for row in debit_rows] == ["COFFEE SHOP"]
+    assert debit_rows[0].amount_minor_units == -425
+    assert [row.description for row in credit_rows] == ["PAYROLL"]
+    assert credit_rows[0].amount_minor_units == 250000
+
+
+def test_list_transactions_direction_composes_with_account_and_dates(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home")
+    first_account = add_boa_account(paths, account_number="123456789")
+    second_account = add_boa_account(paths, account_number="987654321")
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "first.csv", BOA_CSV),
+        account_id=first_account.account_id,
+    )
+    import_boa_csv(
+        paths,
+        write_csv(tmp_path, "second.csv", SECOND_BOA_CSV),
+        account_id=second_account.account_id,
+    )
+
+    rows = list_transactions(
+        paths,
+        account_id=first_account.account_id,
+        date_from="2026-06-10",
+        date_to="2026-06-10",
+        direction="debit",
+    )
+
+    assert len(rows) == 1
+    assert rows[0].description == "COFFEE SHOP"
+    assert rows[0].account_id == first_account.account_id
+
+
 def test_list_transactions_uses_masked_account_when_display_name_is_missing(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path / "home")
     account = add_boa_account(paths, account_number="123456789")

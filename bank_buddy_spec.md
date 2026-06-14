@@ -1,11 +1,13 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.15
+**Version:** 1.16
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.16: Added `tx list --direction debit|credit` so transaction review can
+  focus on outgoing negative amounts or incoming positive amounts.
 - v1.15: Extended Bank of America PDF statement-period extraction to support
   account header lines that use `for <date> to <date> Account number`, matching
   real eStatement text extraction.
@@ -593,8 +595,14 @@ bankbuddy import retry ATTEMPT_ID --account-id ID
 bankbuddy tx list
 bankbuddy tx list --account-id ACCOUNT_ID
 bankbuddy tx list --from DATE --to DATE
+bankbuddy tx list --direction debit
+bankbuddy tx list --direction credit
 bankbuddy tx categorize TX_ID CATEGORY
 ```
+
+`tx list --direction debit` shows negative-amount transactions. `tx list
+--direction credit` shows positive-amount transactions. The direction filter
+can be combined with account and date filters.
 
 Later transaction commands and filters:
 

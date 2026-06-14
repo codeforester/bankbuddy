@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from bankbuddy.accounts import masked_account_number
 from bankbuddy.database import connect_database, initialize_database
@@ -28,6 +29,7 @@ def list_transactions(
     account_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    direction: Literal["debit", "credit"] | None = None,
 ) -> list[TransactionRow]:
     """Return imported transactions ordered by date and id."""
 
@@ -43,6 +45,10 @@ def list_transactions(
     if date_to is not None:
         conditions.append("transactions.transaction_date <= ?")
         parameters.append(date_to)
+    if direction == "debit":
+        conditions.append("transactions.amount_minor_units < 0")
+    elif direction == "credit":
+        conditions.append("transactions.amount_minor_units > 0")
 
     where_clause = f"where {' and '.join(conditions)}" if conditions else ""
     with connect_database(paths) as conn:

@@ -73,6 +73,34 @@ def test_tx_list_filters_by_account_id_and_date_range(tmp_path) -> None:
     assert "COFFEE SHOP" not in result.output
 
 
+def test_tx_list_filters_by_debit_direction(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--direction", "debit"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "COFFEE SHOP" in result.output
+    assert "PAYROLL" not in result.output
+
+
+def test_tx_list_filters_by_credit_direction(tmp_path) -> None:
+    home, _account = seed_transactions(tmp_path)
+
+    result = CliRunner().invoke(
+        main,
+        ["tx", "list", "--direction", "credit"],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 0
+    assert "PAYROLL" in result.output
+    assert "COFFEE SHOP" not in result.output
+
+
 def test_tx_list_reports_empty_state(tmp_path) -> None:
     result = CliRunner().invoke(
         main,

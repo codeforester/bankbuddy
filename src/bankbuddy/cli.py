@@ -224,12 +224,18 @@ def tx() -> None:
 @click.option("--account-id", type=int, help="Filter by configured account id.")
 @click.option("--from", "date_from", help="Inclusive start date, YYYY-MM-DD.")
 @click.option("--to", "date_to", help="Inclusive end date, YYYY-MM-DD.")
+@click.option(
+    "--direction",
+    type=click.Choice(["debit", "credit"], case_sensitive=False),
+    help="Filter by money direction: debit for negative amounts, credit for positive.",
+)
 @click.pass_context
 def tx_list(
     ctx: click.Context,
     account_id: int | None,
     date_from: str | None,
     date_to: str | None,
+    direction: str | None,
 ) -> None:
     """List imported transactions."""
 
@@ -242,13 +248,15 @@ def tx_list(
         account_id=account_id,
         date_from=normalized_date_from,
         date_to=normalized_date_to,
+        direction=direction.lower() if direction else None,
     )
     runtime.log.debug(
-        "tx_list count=%s account_id=%s date_from=%s date_to=%s",
+        "tx_list count=%s account_id=%s date_from=%s date_to=%s direction=%s",
         len(rows),
         account_id,
         normalized_date_from,
         normalized_date_to,
+        direction,
     )
     if not rows:
         click.echo("No transactions found.")
