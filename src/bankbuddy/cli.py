@@ -21,6 +21,9 @@ from bankbuddy.audit import AccountStatementAudit
 from bankbuddy.audit import audit_statement_coverage
 from bankbuddy.audit import AuditFilterError
 from bankbuddy.database import initialize_database
+from bankbuddy.duplicate_diagnostics import DuplicateDiagnosticError
+from bankbuddy.duplicate_diagnostics import DuplicateDiagnosticRow
+from bankbuddy.duplicate_diagnostics import list_duplicate_transaction_diagnostics
 from bankbuddy.exports import ExportFailure
 from bankbuddy.exports import export_sqlite_database
 from bankbuddy.import_history import list_import_history
@@ -383,6 +386,120 @@ def tx_list(
     if summary:
         click.echo("")
         render_transaction_summary(rows)
+
+
+@tx.command("duplicates")
+@click.option("--bank", "bank_name", help="Filter by exact bank name.")
+@click.option("--account-id", type=int, help="Filter by configured account id.")
+@click.option("--account-last4", help="Filter by unambiguous account suffix.")
+@click.option(
+    "--year",
+    type=click.IntRange(min=1900, max=9999),
+    help="Filter by statement end year.",
+)
+@click.option("--attempt-id", type=int, help="Filter by import attempt id.")
+@click.option("--file-id", type=int, help="Filter by import file id.")
+@click.pass_context
+def tx_duplicates(
+    ctx: click.Context,
+    bank_name: str | None,
+    account_id: int | None,
+    account_last4: str | None,
+    year: int | None,
+    attempt_id: int | None,
+    file_id: int | None,
+) -> None:
+    """Inspect rows skipped as duplicate transactions."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        rows = list_duplicate_transaction_diagnostics(
+            paths,
+            bank_name=bank_name,
+            account_id=account_id,
+            account_last4=account_last4,
+            year=year,
+            attempt_id=attempt_id,
+            file_id=file_id,
+        )
+    except DuplicateDiagnosticError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug(
+        "tx_duplicates count=%s bank=%s account_id=%s account_last4=%s "
+        "year=%s attempt_id=%s file_id=%s",
+        len(rows),
+        bank_name,
+        account_id,
+        account_number_suffix(account_last4),
+        year,
+        attempt_id,
+        file_id,
+    )
+    if not rows:
+        click.echo("No duplicate transactions found.")
+        return
+
+    render_duplicate_transaction_rows(rows)
+
+
+def render_duplicate_transaction_rows(rows: list[DuplicateDiagnosticRow]) -> None:
+    """Render reconstructed duplicate transaction diagnostics."""
+
+    render_pretty_table(
+        [
+            "Attempt",
+            "Bank",
+            "Account",
+            "Statement",
+            "File",
+            "Row",
+            "Date",
+            "Amount",
+            "Candidate",
+            "Original ID",
+            "Original Row",
+            "Original Date",
+            "Original Amount",
+            "Original",
+        ],
+        [
+            [
+                str(row.attempt_id),
+                row.bank_name,
+                row.account_display,
+                row.statement_period,
+                row.file_name,
+                row.candidate_source_row_key,
+                row.candidate_date,
+                format_minor_units(row.candidate_amount_minor_units),
+                row.candidate_description,
+                str(row.matched_transaction_id),
+                row.matched_source_row_key or "-",
+                row.matched_date,
+                format_minor_units(row.matched_amount_minor_units),
+                row.matched_description,
+            ]
+            for row in rows
+        ],
+        [
+            "right",
+            "left",
+            "left",
+            "left",
+            "left",
+            "right",
+            "left",
+            "right",
+            "left",
+            "right",
+            "right",
+            "left",
+            "right",
+            "left",
+        ],
+    )
 
 
 def account_number_suffix(account_number: str | None) -> str | None:
