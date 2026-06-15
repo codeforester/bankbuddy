@@ -2,26 +2,6 @@
 
 Local-first personal finance tracking.
 
-## License
-
-Copyright (C) 2026 Ramesh Padmanabhaiah
-
-bankbuddy is free software: you can redistribute it and/or modify it under the
-terms of the GNU Affero General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option) any
-later version.
-
-bankbuddy is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE. See the GNU Affero General Public License for more
-details.
-
-You should have received a copy of the GNU Affero General Public License along
-with bankbuddy. If not, see <https://www.gnu.org/licenses/>.
-
-Versions before this relicensing change remain available under the MIT License
-as originally published. New versions are licensed under AGPL-3.0-or-later.
-
 ## Development
 
 Install project tools through Base:
@@ -315,3 +295,11 @@ basectl check bankbuddy
 basectl doctor bankbuddy
 basectl test bankbuddy
 ```
+
+## License
+
+bankbuddy is licensed under AGPL-3.0-or-later.
+
+Versions before the AGPL relicensing change remain available under the MIT
+License as originally published. See [LICENSE](LICENSE) for the current license
+terms.
