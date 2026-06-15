@@ -122,6 +122,8 @@ bankbuddy report spending --year 2026
 bankbuddy report spending --year 2026 --month 5
 bankbuddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3
 bankbuddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3 --force
+bankbuddy storage migrate-layout --dry-run
+bankbuddy storage migrate-layout --apply
 ```
 
 ## Environments
@@ -154,10 +156,13 @@ bankbuddy --environment prod status
 bankbuddy --environment dev import inbox
 ```
 
-`BANKBUDDY_HOME` is a data-home override for the database and managed folders
-such as `inbox`, `processed`, `duplicates`, and `exports`. It does not point to
-the source checkout. When set, it wins over the environment-to-home mapping
-while `BANKBUDDY_ENV` still names the active environment.
+`BANKBUDDY_HOME` is a data-home override for the database and managed folders.
+It does not point to the source checkout. New homes use
+`database/bankbuddy.sqlite3` for SQLite and `bank/inbox`, `bank/processed`,
+`bank/duplicates`, and `bank/exports` for statement files, plus matching
+`tax/` folders for the planned tax document workflow. When set,
+`BANKBUDDY_HOME` wins over the environment-to-home mapping while
+`BANKBUDDY_ENV` still names the active environment.
 
 Use Base-style runtime options before the subcommand when troubleshooting:
 
@@ -215,9 +220,9 @@ configured account, the import fails instead of trusting the flag.
 Bank of America imports support text-selectable PDF statements first, plus CSV
 files when available. BOA PDF period extraction supports the statement-period
 header and the account header found in eStatement text. BOA PDF files in
-`~/BankBuddy/inbox/` can be routed to a configured account by statement account
-number; CSV inbox imports still require `--account-id` unless the file is an
-exact duplicate of a prior successful import.
+`~/BankBuddy/bank/inbox/` can be routed to a configured account by statement
+account number; CSV inbox imports still require `--account-id` unless the file
+is an exact duplicate of a prior successful import.
 
 Apple Card imports support text-selectable PDF statements. BankBuddy detects
 Apple Card PDFs from document content, routes them with configured product refs
@@ -225,21 +230,27 @@ such as `Apple Card`, imports purchases as debits and payments/credits as
 credits, and keeps zero-activity statements in the processed archive.
 
 ICICI Bank and HDFC Bank imports support old Excel `.xls` statement exports.
-These `.xls` files can be routed from `inbox/` by the full account number in
-the spreadsheet when exactly one configured INR account for that bank matches.
+These `.xls` files can be routed from `bank/inbox/` by the full account number
+in the spreadsheet when exactly one configured INR account for that bank
+matches.
 Successful spreadsheet imports store transaction value dates and update the
 account latest balance snapshot from the statement balance.
 
-Successful imports are copied into `~/BankBuddy/processed/<bank>/<year>/<month>/`
-with canonical filenames while the original explicit source files are left
-untouched. Exact duplicate inbox files are identified by SHA-256 file hash
-before parser work, recorded as `duplicate` attempts, and moved to
-`~/BankBuddy/duplicates/<bank>/<year>/<month>/` for now.
+Successful imports are copied into
+`~/BankBuddy/bank/processed/<bank>/<year>/<month>/` with canonical filenames
+while the original explicit source files are left untouched. Exact duplicate
+inbox files are identified by SHA-256 file hash before parser work, recorded
+as `duplicate` attempts, and moved to
+`~/BankBuddy/bank/duplicates/<bank>/<year>/<month>/` for now.
 Use `bankbuddy import --dry-run ...` to preview parser, duplicate, and archive
 actions without writing transactions, import history, processed files, duplicate
 files, or removing inbox files.
 Keep real statements outside the repo; Bank Buddy stores data in your local
 SQLite database.
+
+Existing homes created before the canonical `database/` and `bank/` layout can
+be migrated with `bankbuddy storage migrate-layout --dry-run`, then
+`bankbuddy storage migrate-layout --apply` after reviewing the plan.
 
 Supported import failures are recorded in `import history`. Retrying a failed
 attempt creates a new attempt and leaves the original failed attempt intact.

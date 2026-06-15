@@ -233,7 +233,7 @@ def test_import_file_dry_run_reports_plan_without_writes(tmp_path) -> None:
     assert "Rows that would be imported: 2" in result.output
     assert "Rows already present: 0" in result.output
     assert (
-        "Processed path: processed/bank-of-america/2026/06/"
+        "Processed path: bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     ) in result.output
     assert "Database changed: no" in result.output
@@ -331,7 +331,7 @@ def test_import_file_dry_run_reports_icici_xls_latest_balance(
     assert "Rows parsed: 2" in result.output
     assert "Rows that would be imported: 2" in result.output
     assert (
-        "Processed path: processed/icici-bank/2025/04/"
+        "Processed path: bank/processed/icici-bank/2025/04/"
         "icici-bank_9012_2025-04-01_2025-04-30.xls"
     ) in result.output
     assert "Latest balance: INR 24050.25 as of 2025-04-30" in result.output
@@ -402,7 +402,7 @@ def test_import_file_dry_run_reports_hdfc_xls_latest_balance(
     assert "Rows parsed: 3" in result.output
     assert "Rows that would be imported: 3" in result.output
     assert (
-        "Processed path: processed/hdfc-bank/2025/12/"
+        "Processed path: bank/processed/hdfc-bank/2025/12/"
         "hdfc-bank_9356_2025-01-01_2025-12-31.xls"
     ) in result.output
     assert "Latest balance: INR 11010.50 as of 2026-01-01" in result.output
@@ -450,7 +450,7 @@ def test_import_file_dry_run_parse_failure_does_not_record_attempt(tmp_path) -> 
 def test_import_inbox_command_reports_success_and_removes_source(tmp_path) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     inbox_file = inbox / "statement.csv"
     inbox_file.write_text(BOA_CSV, encoding="utf-8")
@@ -488,7 +488,7 @@ def test_import_inbox_command_dry_run_reports_plan_without_removing_source(
 ) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     inbox_file = inbox / "statement.csv"
     inbox_file.write_text(BOA_CSV, encoding="utf-8")
@@ -520,7 +520,7 @@ def test_import_inbox_command_dry_run_reports_plan_without_removing_source(
     assert "Planned imports: 1" in result.output
     assert (
         "would-import  statement.csv  parsed=2 would-import=2 duplicates=0  "
-        "canonical=processed/bank-of-america/2026/06/"
+        "canonical=bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     ) in result.output
     assert inbox_file.is_file()
@@ -536,7 +536,7 @@ def test_import_inbox_command_dry_run_routes_icici_xls_by_account_number(
 ) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     inbox_file = inbox / "icici-statement.xls"
     inbox_file.write_bytes(b"synthetic xls placeholder")
@@ -573,7 +573,7 @@ def test_import_inbox_command_dry_run_routes_icici_xls_by_account_number(
     assert "Planned imports: 1" in result.output
     assert (
         "would-import  icici-statement.xls  parsed=2 would-import=2 duplicates=0  "
-        "canonical=processed/icici-bank/2025/04/"
+        "canonical=bank/processed/icici-bank/2025/04/"
         "icici-bank_9012_2025-04-01_2025-04-30.xls"
     ) in result.output
     assert inbox_file.is_file()
@@ -585,7 +585,7 @@ def test_import_inbox_command_dry_run_routes_hdfc_xls_by_account_number(
 ) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     inbox_file = inbox / "hdfc-statement.xls"
     inbox_file.write_bytes(b"synthetic xls placeholder")
@@ -630,7 +630,7 @@ def test_import_inbox_command_dry_run_routes_hdfc_xls_by_account_number(
     assert "Planned imports: 1" in result.output
     assert (
         "would-import  hdfc-statement.xls  parsed=3 would-import=3 duplicates=0  "
-        "canonical=processed/hdfc-bank/2025/12/"
+        "canonical=bank/processed/hdfc-bank/2025/12/"
         "hdfc-bank_9356_2025-01-01_2025-12-31.xls"
     ) in result.output
     assert inbox_file.is_file()
@@ -639,7 +639,7 @@ def test_import_inbox_command_dry_run_routes_hdfc_xls_by_account_number(
 def test_import_inbox_command_reports_duplicate_file(tmp_path) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     csv_path = tmp_path / "boa.csv"
     csv_path.write_text(BOA_CSV, encoding="utf-8")
@@ -674,9 +674,9 @@ def test_import_inbox_command_reports_duplicate_file(tmp_path) -> None:
     assert "Duplicates: 1" in result.output
     assert (
         "duplicate  statement-redownload.csv  "
-        "preserved=duplicates/bank-of-america/2026/06/"
+        "preserved=bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "canonical=processed/bank-of-america/2026/06/"
+        "canonical=bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     ) in result.output
     assert not inbox_file.exists()
@@ -686,11 +686,11 @@ def test_import_inbox_command_reports_duplicate_file(tmp_path) -> None:
     assert history.exit_code == 0
     assert "duplicate" in history.output
     assert (
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     ) in history.output
     assert (
-        "duplicates/bank-of-america/2026/06/"
+        "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     ) in history.output
 
@@ -698,7 +698,7 @@ def test_import_inbox_command_reports_duplicate_file(tmp_path) -> None:
 def test_import_inbox_command_dry_run_reports_duplicate_without_move(tmp_path) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     csv_path = tmp_path / "boa.csv"
     csv_path.write_text(BOA_CSV, encoding="utf-8")
@@ -732,15 +732,15 @@ def test_import_inbox_command_dry_run_reports_duplicate_without_move(tmp_path) -
     assert "Planned duplicates: 1" in result.output
     assert (
         "would-skip-duplicate  statement-redownload.csv  "
-        "preserved=duplicates/bank-of-america/2026/06/"
+        "preserved=bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "canonical=processed/bank-of-america/2026/06/"
+        "canonical=bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     ) in result.output
     assert inbox_file.is_file()
     assert not (
         home
-        / "duplicates/bank-of-america/2026/06/"
+        / "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     ).exists()
     with connect_database(resolve_app_paths(home)) as conn:
@@ -757,7 +757,7 @@ def test_import_inbox_command_routes_pdf_without_account_id(
 ) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     inbox_file = inbox / "statement.pdf"
     inbox_file.write_bytes(b"%PDF-1.4 synthetic fixture placeholder")
@@ -794,7 +794,7 @@ def test_import_inbox_command_routes_pdf_without_account_id(
 def test_import_inbox_command_reports_csv_requires_account_id(tmp_path) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     inbox_file = inbox / "statement.csv"
     inbox_file.write_text(BOA_CSV, encoding="utf-8")
@@ -822,7 +822,7 @@ def test_import_inbox_command_reports_empty_state(tmp_path) -> None:
 def test_import_inbox_command_reports_unsupported_file(tmp_path) -> None:
     runner = CliRunner()
     home = tmp_path / "home"
-    inbox = home / "inbox"
+    inbox = home / "bank" / "inbox"
     inbox.mkdir(parents=True)
     unsupported_file = inbox / "notes.txt"
     unsupported_file.write_text("unsupported", encoding="utf-8")
@@ -889,14 +889,14 @@ def test_import_history_command_outputs_attempts(tmp_path) -> None:
     ) in result.output
     assert (
         "2  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv  -  "
         "Bank of America  1  success"
     ) in result.output
     assert "  2  0  2  -" in result.output
     assert (
         "1  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv  -  "
         "Bank of America  1  success"
     ) in result.output
@@ -938,13 +938,13 @@ def test_import_history_command_filters_by_status_and_limit(tmp_path) -> None:
     assert result.exit_code == 0
     assert (
         "2  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv  -  "
         "Bank of America  1  success"
     ) in result.output
     assert (
         "1  boa.csv  bank-of-america_6789_2026-06-10_2026-06-11.csv  "
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv  -  "
         "Bank of America  1  success"
     ) not in result.output

@@ -47,7 +47,7 @@ def test_list_import_history_orders_newest_first(tmp_path) -> None:
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert rows[0].processed_path == (
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert rows[0].bank_name == "Bank of America"
@@ -92,7 +92,7 @@ def test_list_import_history_reports_duplicate_path(tmp_path) -> None:
                 file_row["bank_id"],
                 account.account_id,
                 "duplicate",
-                "duplicates/bank-of-america/2026/06/"
+                "bank/duplicates/bank-of-america/2026/06/"
                 "bank-of-america_6789_2026-06-10_2026-06-11.csv",
             ),
         )
@@ -104,7 +104,7 @@ def test_list_import_history_reports_duplicate_path(tmp_path) -> None:
     assert rows[0].status == "duplicate"
     assert rows[0].processed_path == file_row["processed_path"]
     assert rows[0].duplicate_path == (
-        "duplicates/bank-of-america/2026/06/"
+        "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
 

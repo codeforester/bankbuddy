@@ -113,7 +113,7 @@ def test_import_inbox_dry_run_reports_supported_file_without_changes(tmp_path) -
     assert summary.results[0].rows_imported == 2
     assert summary.results[0].rows_skipped_duplicate == 0
     assert summary.results[0].processed_path == (
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert inbox_file.is_file()
@@ -267,7 +267,7 @@ def test_import_inbox_routes_apple_card_pdf_by_product_ref(
     assert summary.results[0].rows_parsed == 3
     assert summary.results[0].rows_imported == 3
     assert summary.results[0].processed_path == (
-        "processed/apple-gs/2025/08/apple-gs_0932_2025-08-01_2025-08-31.pdf"
+        "bank/processed/apple-gs/2025/08/apple-gs_0932_2025-08-01_2025-08-31.pdf"
     )
     assert inbox_file.is_file()
 
@@ -293,15 +293,15 @@ def test_import_inbox_dry_run_reports_duplicate_without_archive_or_history(
     assert summary.results[0].file_name == "statement-redownload.csv"
     assert summary.results[0].status == "duplicate"
     assert summary.results[0].message == (
-        "Would skip duplicate of processed/bank-of-america/2026/06/"
+        "Would skip duplicate of bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert summary.results[0].processed_path == (
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert summary.results[0].duplicate_path == (
-        "duplicates/bank-of-america/2026/06/"
+        "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert inbox_file.is_file()
@@ -339,11 +339,11 @@ def test_import_inbox_preserves_successful_duplicate_before_csv_account_check(
     assert summary.results[0].rows_imported == 0
     assert summary.results[0].rows_skipped_duplicate == 0
     assert summary.results[0].processed_path == (
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert summary.results[0].duplicate_path == (
-        "duplicates/bank-of-america/2026/06/"
+        "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert not inbox_file.exists()

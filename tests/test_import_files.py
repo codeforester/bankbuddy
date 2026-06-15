@@ -30,7 +30,7 @@ def test_import_archive_relative_path_groups_by_bank_year_and_month() -> None:
 
     assert (
         relative_path.as_posix()
-        == "processed/bank-of-america/2026/05/"
+        == "bank/processed/bank-of-america/2026/05/"
         "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
     )
 
@@ -44,7 +44,7 @@ def test_duplicate_archive_relative_path_groups_by_bank_year_and_month() -> None
 
     assert (
         relative_path.as_posix()
-        == "duplicates/bank-of-america/2026/05/"
+        == "bank/duplicates/bank-of-america/2026/05/"
         "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
     )
 
@@ -77,7 +77,7 @@ def test_archive_statement_file_copies_source_and_preserves_original(tmp_path) -
     assert metadata.source_path == str(source_path.resolve())
     assert (
         metadata.processed_path
-        == "processed/bank-of-america/2026/05/"
+        == "bank/processed/bank-of-america/2026/05/"
         "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
     )
     assert metadata.statement_start_date == "2026-04-23"
@@ -108,7 +108,7 @@ def test_plan_statement_archive_file_does_not_copy_source(tmp_path) -> None:
     )
     assert (
         metadata.processed_path
-        == "processed/bank-of-america/2026/05/"
+        == "bank/processed/bank-of-america/2026/05/"
         "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
     )
     assert not (paths.root / metadata.processed_path).exists()
@@ -199,7 +199,7 @@ def test_archive_duplicate_statement_file_preserves_duplicate_copy(tmp_path) -> 
     )
 
     assert duplicate_path == (
-        "duplicates/bank-of-america/2026/06/"
+        "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert source_path.is_file()
@@ -232,11 +232,11 @@ def test_archive_duplicate_statement_file_adds_counter_for_collision(tmp_path) -
     )
 
     assert first_path == (
-        "duplicates/bank-of-america/2026/06/"
+        "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert second_path == (
-        "duplicates/bank-of-america/2026/06/"
+        "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11-duplicate-2.csv"
     )
     assert (paths.root / first_path).read_text(encoding="utf-8") == "first"
@@ -257,7 +257,31 @@ def test_plan_duplicate_statement_path_does_not_copy_source(tmp_path) -> None:
     )
 
     assert duplicate_path == (
-        "duplicates/bank-of-america/2026/06/"
+        "bank/duplicates/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert not (paths.root / duplicate_path).exists()
+
+
+def test_plan_statement_archive_file_uses_legacy_layout_when_forced(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path / "home", layout="legacy")
+    ensure_app_dirs(paths)
+    source_path = tmp_path / "eStmt_2026-05-19.pdf"
+    source_path.write_bytes(b"statement contents")
+
+    metadata = plan_statement_archive_file(
+        paths,
+        source_path=source_path,
+        bank_name="Bank of America",
+        account_ref="1145",
+        statement_start_date="2026-04-23",
+        statement_end_date="2026-05-19",
+        source_format="boa_pdf",
+        file_hash="abcd1234",
+    )
+
+    assert (
+        metadata.processed_path
+        == "processed/bank-of-america/2026/05/"
+        "bank-of-america_1145_2026-04-23_2026-05-19.pdf"
+    )

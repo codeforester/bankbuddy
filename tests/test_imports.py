@@ -779,7 +779,7 @@ def test_import_boa_csv_inserts_transactions_and_attempt(tmp_path) -> None:
     )
     assert file_row["source_path"] == str(csv_path.resolve())
     assert file_row["processed_path"] == (
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     assert file_row["statement_start_date"] == "2026-06-10"
@@ -860,7 +860,7 @@ def test_import_boa_csv_skips_duplicate_transactions(tmp_path) -> None:
         {
             "canonical_file_name": "bank-of-america_6789_2026-06-10_2026-06-11.csv",
             "processed_path": (
-                "processed/bank-of-america/2026/06/"
+                "bank/processed/bank-of-america/2026/06/"
                 "bank-of-america_6789_2026-06-10_2026-06-11.csv"
             ),
         }
@@ -888,7 +888,7 @@ def test_plan_boa_csv_import_reports_would_import_without_writes(tmp_path) -> No
     assert plan.rows_would_import == 2
     assert plan.rows_already_present == 0
     assert plan.processed_path == (
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_6789_2026-06-10_2026-06-11.csv"
     )
     with connect_database(paths) as conn:
@@ -1001,7 +1001,7 @@ def test_import_boa_pdf_inserts_transactions_after_account_match(tmp_path, monke
     )
     assert file_row["source_path"] == str(pdf_path.resolve())
     assert file_row["processed_path"] == (
-        "processed/bank-of-america/2026/06/"
+        "bank/processed/bank-of-america/2026/06/"
         "bank-of-america_1145_2026-06-01_2026-06-30.pdf"
     )
     assert file_row["statement_start_date"] == "2026-06-01"
@@ -1158,6 +1158,6 @@ def test_import_parsed_statement_allows_product_ref_to_match_user_bank_label(
         "bank_name": "Apple GS",
         "source_format": "apple_card_pdf",
         "processed_path": (
-            "processed/apple-gs/2025/08/apple-gs_0932_2025-08-01_2025-08-31.pdf"
+            "bank/processed/apple-gs/2025/08/apple-gs_0932_2025-08-01_2025-08-31.pdf"
         ),
     }
