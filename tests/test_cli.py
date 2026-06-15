@@ -339,7 +339,10 @@ def test_account_list_outputs_configured_accounts_with_last_four(tmp_path) -> No
 
     assert add_result.exit_code == 0
     assert list_result.exit_code == 0
-    assert "1  Bank of America  Everyday Checking  checking  USD  ...6789" in (
+    assert "ID | Bank            | Name              | Type     | Currency | Account" in (
+        list_result.output
+    )
+    assert " 1 | Bank of America | Everyday Checking | checking | USD      | ...6789" in (
         list_result.output
     )
     assert "123456789" not in list_result.output
@@ -526,6 +529,40 @@ def test_account_show_outputs_account_detail_without_full_number(tmp_path) -> No
         in result.output
     )
     assert "166601075148" not in result.output
+
+
+def test_account_show_can_reveal_full_account_number_explicitly(tmp_path) -> None:
+    runner = CliRunner()
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "ICICI Bank",
+            "--country",
+            "IN",
+            "--account-number",
+            "166601075148",
+            "--type",
+            "savings",
+            "--currency",
+            "INR",
+            "--display-name",
+            "ICICI Joint NRO",
+        ],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    result = runner.invoke(
+        main,
+        ["account", "show", "1", "--show-full-account-number"],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0
+    assert "Account: 166601075148" in result.output
+    assert "Account: ...5148" not in result.output
 
 
 def test_account_show_rejects_unknown_account(tmp_path) -> None:
