@@ -84,6 +84,7 @@ def create_runtime(
     config_path: str | None,
     keep_temp: bool,
     log_file: str | None,
+    cli_name: str = CLI_NAME,
 ) -> CliRuntime:
     """Create a Base-style runtime context for a BankBuddy CLI invocation."""
 
@@ -102,7 +103,7 @@ def create_runtime(
     resolved_debug = debug or str(config.get("log_level", "")).lower() == "debug"
     resolved_keep_temp = keep_temp or bool(config.get("keep_temp"))
 
-    state_dir = base_cache_root() / "cli" / CLI_NAME
+    state_dir = base_cache_root() / "cli" / cli_name
     log_dir = state_dir / "logs"
     cache_dir = state_dir / "cache"
     temp_dir = state_dir / "tmp" / run_id
@@ -116,10 +117,10 @@ def create_runtime(
         keep_temp=resolved_keep_temp,
         explicit_log_file=bool(log_file),
     )
-    logger = configure_logger(CLI_NAME, prepared_log_file, resolved_debug)
+    logger = configure_logger(cli_name, prepared_log_file, resolved_debug)
     logger.debug(
         "cli=%s run_id=%s environment=%s",
-        CLI_NAME,
+        cli_name,
         run_id,
         resolved_environment,
     )
@@ -131,7 +132,7 @@ def create_runtime(
     logger.debug("python=%s", sys.version.replace("\n", " "))
 
     return CliRuntime(
-        cli_name=CLI_NAME,
+        cli_name=cli_name,
         run_id=run_id,
         state_dir=state_dir,
         log_dir=log_dir,

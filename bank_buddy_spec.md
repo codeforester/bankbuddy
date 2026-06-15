@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.33
+**Version:** 1.34
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.34: Added the first TaxBuddy implementation slice: `taxbuddy` console
+  script, `tax_documents` index, explicit-file and inbox imports, dry-run
+  planning, SHA-256 idempotency, canonical `tax/processed/...` archival, and
+  `docs list/show`.
 - v1.33: Added the canonical data-home layout with
   `database/bankbuddy.sqlite3`, banking files under `bank/`, tax files under
   `tax/`, legacy layout detection, and `storage migrate-layout` for safe
@@ -1106,9 +1110,10 @@ database in a synced location, they must choose that explicitly with
 
 Tax imports should use the same file-handling contract as statement imports:
 content-based detection rather than source filename inference, SHA-256
-idempotency, canonical archive names, duplicate preservation while the workflow
-matures, dry-run parity, and no destructive moves until the managed copy is
-safe.
+idempotency, canonical archive names, dry-run parity, and no destructive moves
+until the managed copy is safe. The first TaxBuddy slice skips exact duplicate
+documents by hash; preserving duplicate tax files under `tax/duplicates/` can
+be added later if the workflow needs that audit trail.
 
 ### 13.2 Tax Tables
 
@@ -1123,7 +1128,7 @@ The first design can use these tables or normalized equivalents:
 | `original_file_name` | TEXT NOT NULL | User-supplied filename |
 | `canonical_file_name` | TEXT NOT NULL | Parser-derived archive filename |
 | `source_path` | TEXT | Explicit import source path when known |
-| `processed_path` | TEXT NOT NULL | Path relative to the tax document root |
+| `processed_path` | TEXT NOT NULL | Path relative to the data home, such as `tax/processed/...` |
 | `document_type` | TEXT NOT NULL | Form type such as `1099-INT`, `W-2`, `form_26as`, or `ais` |
 | `jurisdiction` | TEXT NOT NULL | ISO-style jurisdiction code such as `US` or `IN` |
 | `tax_year` | INTEGER NOT NULL | Tax year represented by the document |
@@ -1216,17 +1221,18 @@ items until a user confirms or waives them.
    reference, and optional person label from document content.
 5. Fail loudly when required metadata is ambiguous; do not infer from the
    source filename alone.
-6. Resolve or create source metadata when confidence is high; otherwise mark
-   the source for user review.
+6. Resolve document source metadata from content. The first implementation
+   stores source text as document metadata only; normalized source/profile
+   tables come with the gap-detection slice.
 7. Copy the document into the canonical `tax/processed/...` hierarchy.
-8. Record the `tax_documents` row and any source/profile updates in one
-   transaction.
+8. Record the `tax_documents` row in one transaction.
 9. In dry-run mode, report the same parser, duplicate, canonical path, and
    source-resolution plan without writing rows or copying/removing files.
 
 ### 13.4 Planned `taxbuddy` CLI Surface
 
 ```text
+taxbuddy status
 taxbuddy import --file FILE
 taxbuddy import --dry-run --file FILE
 taxbuddy import inbox
@@ -1234,6 +1240,11 @@ taxbuddy import --dry-run inbox
 taxbuddy docs list --year YEAR
 taxbuddy docs list --type DOCUMENT_TYPE
 taxbuddy docs show TAX_DOCUMENT_ID
+```
+
+Later TaxBuddy slices add:
+
+```text
 taxbuddy profile show --year YEAR
 taxbuddy profile sources
 taxbuddy profile gaps --year YEAR
@@ -1250,9 +1261,9 @@ tables over hidden inference.
 
 ### 13.5 TaxBuddy Implementation Slices
 
-Issue #99 should implement the first slice: `taxbuddy` console script, tax
-document paths, document metadata indexing, dry-run import, idempotency by file
-hash, canonical archival, and `docs list/show`.
+Issue #99 implements the first slice: `taxbuddy` console script, tax document
+paths, document metadata indexing, dry-run import, idempotency by file hash,
+canonical archival, and `docs list/show`.
 
 Issue #100 should implement the second slice: source/form expectations,
 manual overrides, gap generation, waivers, inactive sources, and annual
