@@ -247,6 +247,22 @@ attempt creates a new attempt and leaves the original failed attempt intact.
 SQLite exports contain sensitive financial data and actual account numbers.
 Store them in a private location.
 
+## TaxBuddy Roadmap
+
+BankBuddy is the current banking CLI. The planned TaxBuddy layer will add a
+second CLI, `taxbuddy`, in the same repo and SQLite database for tax document
+readiness: indexing received tax documents, tracking expected forms, surfacing
+missing or waived documents, and producing annual readiness summaries.
+
+TaxBuddy will not file taxes, prepare returns, or calculate final tax
+liability. Local storage remains the default. An iCloud or other synced tax
+document folder may be configured later for spouse access, but sync is opt-in
+and does not silently move the SQLite database.
+
+The planned work is tracked in GitHub issues: #98 for the accepted design, #99
+for tax document import and metadata indexing, and #100 for expected-form gap
+detection and annual readiness summaries.
+
 Run tests:
 
 ```bash

@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.31
+**Version:** 1.32
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.32: Documented the planned TaxBuddy layer as a second `taxbuddy`
+  CLI in the same repo and SQLite database. TaxBuddy is scoped to tax
+  document indexing, expected-form gap detection, and annual readiness
+  summaries, not tax filing or liability calculation.
 - v1.31: Added `bank list`, `bank rename`, and
   `account update --display-name` for correcting configured bank and account
   display labels without changing stored actual account numbers.
@@ -120,7 +124,10 @@ control of their financial data without relying on third-party services.
 Bank Buddy is a locally installed, privacy-first personal finance tool. It lets
 users consolidate bank statements from multiple banks and currencies, categorize
 transactions intelligently, track spending trends, and manage budgets without
-sharing bank credentials with a third party.
+sharing bank credentials with a third party. The planned TaxBuddy layer extends
+the same document-centric model to tax document readiness: what documents have
+arrived, what forms are expected, and what gaps need attention before tax
+season.
 
 ### Core Goals
 
@@ -132,6 +139,8 @@ sharing bank credentials with a third party.
   is required. Data stays local by default.
 - **Simplicity and durability:** Data remains available even if a third-party
   personal finance product shuts down.
+- **Tax readiness:** Organize tax documents and surface missing expected forms
+  without pretending to prepare or file tax returns.
 - **Shareability:** Built for personal use first, then friends, then optionally
   wider distribution without App Store complexity.
 
@@ -158,7 +167,9 @@ focused on the financial domain rather than infrastructure.
 - Use `pyproject.toml` for package metadata, console scripts, dependency groups,
   lint/test configuration, and Python version constraints.
 - Use `uv sync` to create the local environment and `uv run ...` for commands.
-- Expose the CLI as a console script named `bankbuddy`.
+- Expose the banking CLI as a console script named `bankbuddy`. Tax document
+  workflows later expose a second console script named `taxbuddy` from the same
+  repo and package.
 - Follow Base-style CLI runtime behavior: root options for `--debug`,
   `--log-file`, `--keep-temp`, `--environment`, and `--config`; primary output
   on stdout; diagnostics on stderr; and no full account numbers or raw
@@ -174,6 +185,7 @@ focused on the financial domain rather than infrastructure.
 
   ```text
   src/bankbuddy/
+    tax/                  # planned TaxBuddy modules
     migrations/
   tests/
   ```
@@ -1013,7 +1025,210 @@ Cloud sync and automated backup are out of scope for early phases.
 
 ---
 
-## 13. Phased Roadmap
+## 13. TaxBuddy Direction
+
+TaxBuddy is the planned tax-document readiness layer inside this repository. It
+shares the BankBuddy runtime, environment selection, SQLite database, migration
+runner, logging rules, and formatting utilities, but it has its own CLI surface
+named `taxbuddy` and its own modules under `src/bankbuddy/tax/`.
+
+TaxBuddy should answer operational questions before tax season:
+
+- Which tax documents have been received for a year?
+- Which institutions, employers, properties, or accounts usually produce tax
+  forms?
+- Which expected forms are still missing, waived, or marked for review?
+- Which jurisdiction does each document belong to?
+
+TaxBuddy does not file taxes, prepare returns, transmit data to tax agencies,
+or calculate final tax liability. Early summaries are readiness summaries, not
+tax advice. Numeric liability estimation requires a separate design for
+jurisdiction-specific rules and disclaimers.
+
+### 13.1 Storage Model
+
+TaxBuddy uses the same SQLite database as BankBuddy so account, institution,
+and document history can be linked without a second source of truth.
+`BANKBUDDY_HOME` continues to select the data home and database. Tax documents
+default to a `tax/` subtree under the active data home:
+
+```text
+~/BankBuddy/
+|-- bankbuddy.sqlite3
+|-- tax/
+|   |-- inbox/
+|   |-- processed/
+|   |   `-- us/
+|   |       `-- 2025/
+|   |           `-- 1099-int/
+|   |               `-- ramesh_2025_1099-int_bank-of-america_1234.pdf
+|   |-- duplicates/
+|   `-- exports/
+```
+
+An optional `TAXBUDDY_DOCUMENT_HOME` override may point the tax document root
+to an iCloud Drive folder or another synced location for spouse access. That
+override must not silently move the SQLite database; if the user wants the
+database in a synced location, they must choose that explicitly with
+`BANKBUDDY_HOME`. This keeps local-only operation as the default.
+
+Tax imports should use the same file-handling contract as statement imports:
+content-based detection rather than source filename inference, SHA-256
+idempotency, canonical archive names, duplicate preservation while the workflow
+matures, dry-run parity, and no destructive moves until the managed copy is
+safe.
+
+### 13.2 Tax Tables
+
+The first design can use these tables or normalized equivalents:
+
+#### `tax_documents`
+
+| Column | Type | Notes |
+|---|---|---|
+| `tax_document_id` | INTEGER PK | Surrogate key |
+| `file_hash` | TEXT NOT NULL UNIQUE | SHA-256 of document contents |
+| `original_file_name` | TEXT NOT NULL | User-supplied filename |
+| `canonical_file_name` | TEXT NOT NULL | Parser-derived archive filename |
+| `source_path` | TEXT | Explicit import source path when known |
+| `processed_path` | TEXT NOT NULL | Path relative to the tax document root |
+| `document_type` | TEXT NOT NULL | Form type such as `1099-INT`, `W-2`, `form_26as`, or `ais` |
+| `jurisdiction` | TEXT NOT NULL | ISO-style jurisdiction code such as `US` or `IN` |
+| `tax_year` | INTEGER NOT NULL | Tax year represented by the document |
+| `source_entity` | TEXT | Issuer such as bank, broker, employer, county, or tax authority |
+| `person_label` | TEXT | Optional household/person label used in canonical filenames |
+| `account_ref` | TEXT | Masked suffix or parser-visible account reference |
+| `imported_at` | DATETIME NOT NULL | |
+| `created_at` | DATETIME NOT NULL | |
+| `updated_at` | DATETIME NOT NULL | |
+
+Raw extracted text should not be stored durably by default. If searchable
+document text becomes useful later, it needs a separate encrypted-storage
+design.
+
+#### `tax_sources`
+
+| Column | Type | Notes |
+|---|---|---|
+| `tax_source_id` | INTEGER PK | Surrogate key |
+| `source_name` | TEXT NOT NULL | e.g. `Fidelity`, `Bank of America`, employer name, county name |
+| `source_type` | TEXT NOT NULL | `bank`, `brokerage`, `employer`, `property`, `tax_authority`, or `other` |
+| `jurisdiction` | TEXT NOT NULL | `US`, `IN`, or another supported jurisdiction |
+| `active` | BOOLEAN NOT NULL | False when the relationship is closed |
+| `notes` | TEXT | User notes or parser review comments |
+| `created_at` | DATETIME NOT NULL | |
+| `updated_at` | DATETIME NOT NULL | |
+
+Expected forms and account references may be normalized into child tables rather
+than stored as JSON arrays. The important contract is that user overrides are
+durable and do not require deleting history.
+
+#### `tax_profile`
+
+| Column | Type | Notes |
+|---|---|---|
+| `tax_profile_id` | INTEGER PK | Surrogate key |
+| `tax_year` | INTEGER NOT NULL | |
+| `filing_status` | TEXT | Optional user-maintained value |
+| `has_rental_property` | BOOLEAN | Inferred or user-confirmed |
+| `has_investments` | BOOLEAN | Inferred or user-confirmed |
+| `has_self_employment` | BOOLEAN | Inferred or user-confirmed |
+| `has_india_income` | BOOLEAN | Inferred or user-confirmed |
+| `notes` | TEXT | Free-form review notes |
+| `created_at` | DATETIME NOT NULL | |
+| `updated_at` | DATETIME NOT NULL | |
+
+#### `property_assets`
+
+| Column | Type | Notes |
+|---|---|---|
+| `property_id` | INTEGER PK | Surrogate key |
+| `display_name` | TEXT NOT NULL | Human-readable property label |
+| `jurisdiction` | TEXT NOT NULL | Country or tax jurisdiction |
+| `address` | TEXT | Optional; may be sensitive |
+| `purchase_date` | DATE | Optional |
+| `property_type` | TEXT | `residential`, `commercial`, `land`, or `other` |
+| `active` | BOOLEAN NOT NULL | False when sold or no longer relevant |
+| `notes` | TEXT | |
+| `created_at` | DATETIME NOT NULL | |
+| `updated_at` | DATETIME NOT NULL | |
+
+Cost basis, depreciation, rental-day allocation, and final tax calculations are
+out of scope until TaxBuddy has reliable document inventory and gap tracking.
+
+#### `tax_form_gaps`
+
+| Column | Type | Notes |
+|---|---|---|
+| `tax_form_gap_id` | INTEGER PK | Surrogate key |
+| `tax_year` | INTEGER NOT NULL | |
+| `tax_source_id` | INTEGER FK | Expected source |
+| `expected_document_type` | TEXT NOT NULL | e.g. `1099-INT`, `W-2`, `form_26as` |
+| `expected_by_date` | DATE | Typical deadline when known |
+| `received_tax_document_id` | INTEGER FK | Null until matched |
+| `status` | TEXT NOT NULL | `pending`, `received`, `waived`, or `review` |
+| `notes` | TEXT | User or parser review context |
+| `created_at` | DATETIME NOT NULL | |
+| `updated_at` | DATETIME NOT NULL | |
+
+Gap detection must never fabricate certainty. Ambiguous expectations are review
+items until a user confirms or waives them.
+
+### 13.3 TaxBuddy Import Flow
+
+1. Import one explicit file or scan `tax/inbox/`.
+2. Compute file hash and skip exact duplicates before parser work.
+3. Extract text from text-selectable PDFs or supported fixture text. OCR is
+   later work.
+4. Detect jurisdiction, document type, tax year, source entity, account
+   reference, and optional person label from document content.
+5. Fail loudly when required metadata is ambiguous; do not infer from the
+   source filename alone.
+6. Resolve or create source metadata when confidence is high; otherwise mark
+   the source for user review.
+7. Copy the document into the canonical `tax/processed/...` hierarchy.
+8. Record the `tax_documents` row and any source/profile updates in one
+   transaction.
+9. In dry-run mode, report the same parser, duplicate, canonical path, and
+   source-resolution plan without writing rows or copying/removing files.
+
+### 13.4 Planned `taxbuddy` CLI Surface
+
+```text
+taxbuddy import --file FILE
+taxbuddy import --dry-run --file FILE
+taxbuddy import inbox
+taxbuddy import --dry-run inbox
+taxbuddy docs list --year YEAR
+taxbuddy docs list --type DOCUMENT_TYPE
+taxbuddy docs show TAX_DOCUMENT_ID
+taxbuddy profile show --year YEAR
+taxbuddy profile sources
+taxbuddy profile gaps --year YEAR
+taxbuddy summary --year YEAR
+taxbuddy source add
+taxbuddy source deactivate SOURCE_ID
+taxbuddy gap waive GAP_ID
+```
+
+All output follows the same privacy rules as `bankbuddy`: no full account
+numbers, SSN-like values, PAN-like values, or raw tax document text in logs or
+normal CLI output. The command surface should prefer deterministic, inspectable
+tables over hidden inference.
+
+### 13.5 TaxBuddy Implementation Slices
+
+Issue #99 should implement the first slice: `taxbuddy` console script, tax
+document paths, document metadata indexing, dry-run import, idempotency by file
+hash, canonical archival, and `docs list/show`.
+
+Issue #100 should implement the second slice: source/form expectations,
+manual overrides, gap generation, waivers, inactive sources, and annual
+readiness summaries. Numeric tax-liability estimation remains out of scope.
+
+---
+
+## 14. Phased Roadmap
 
 ### Phase 0 — Project Skeleton and Tooling
 
@@ -1072,16 +1287,28 @@ Cloud sync and automated backup are out of scope for early phases.
 - macOS `launchd` integration
 - local notifications on import completion
 
-### Phase 5 — Interfaces
+### Phase 5 — TaxBuddy Document Readiness
+
+- `taxbuddy` console script using shared runtime and database conventions
+- tax document inbox, processed archive, duplicates, and exports under the
+  active data home
+- optional configured tax document root for iCloud or other synced storage
+- text-selectable PDF metadata extraction for initial tax document types
+- `tax_documents` index and source/profile storage
+- tax document dry-run import with canonical archive planning
+- expected-form gap detection and annual readiness summary
+- explicit non-goal: tax filing or numeric tax liability estimation
+
+### Phase 6 — Interfaces
 
 - read-only web dashboard
-- charts for spending, income, and budgets
+- charts for spending, income, budgets, and tax readiness
 - later web recategorization/budget management
 - local iOS viewer via Xcode-installed app
 
 ---
 
-## 14. Design Principles
+## 15. Design Principles
 
 - **Correctness before breadth.** One reliable parser is better than three
   fragile ones.
@@ -1091,12 +1318,14 @@ Cloud sync and automated backup are out of scope for early phases.
 - **Money is integer data.** Store minor units, never floats.
 - **Retries are normal.** Failed imports should be visible and retryable.
 - **Local first.** Cloud, LLM, and sync features are opt-in later layers.
+- **Readiness, not advice.** TaxBuddy organizes documents and gaps; tax filing
+  and liability calculation require separate designs.
 - **Extensible without ceremony.** Parser modules should be easy to add, but the
   first implementation should stay small.
 
 ---
 
-## 15. Out of Scope for Phase 1
+## 16. Out of Scope for Phase 1
 
 - PDF import
 - HDFC and ICICI support
@@ -1109,6 +1338,7 @@ Cloud sync and automated backup are out of scope for early phases.
 - Web or iOS interfaces
 - Cloud sync or backup
 - App Store distribution
+- Tax document import, tax filing, or tax liability estimation
 
 ---
 
