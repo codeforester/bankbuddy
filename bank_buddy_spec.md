@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.29
+**Version:** 1.30
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.30: Added Apple Card text-PDF imports with content-based PDF detection,
+  product-ref account routing, credit-card sign normalization, zero-activity
+  statement archival, and latest balance snapshots.
 - v1.29: Added concrete `account ref add --help` examples for product,
   last-four, and full-account-number statement reference mappings.
 - v1.28: Made `account list` use the standard pretty-table renderer and added
@@ -211,7 +214,7 @@ simple `export BANKBUDDY_ENV=prod` or `export BANKBUDDY_ENV=dev`.
 | CLI framework | `click` with Base-style runtime conventions |
 | Database | SQLite |
 | Migrations | Small SQL migration runner or lightweight Python migration layer |
-| Phase 1 BOA PDF parsing | `pdfplumber` for text-selectable PDFs |
+| Text PDF parsing | `pdfplumber` for supported text-selectable PDF statements |
 | Phase 1 CSV fallback parsing | Python `csv` module |
 | Indian bank old Excel parsing | `xlrd` for ICICI and HDFC `.xls` statement exports |
 | Later `.xlsx` spreadsheet parsing | `openpyxl` or `pandas` only when needed |
@@ -229,6 +232,7 @@ simple `export BANKBUDDY_ENV=prod` or `export BANKBUDDY_ENV=dev`.
 
 - Bank of America (USA) — text-selectable PDF statement
 - Bank of America (USA) — CSV export fallback when available
+- Apple Card / Goldman Sachs (USA) — text-selectable PDF statement
 - ICICI Bank (India) — old Excel `.xls` statement export
 - HDFC Bank (India) — old Excel `.xls` statement export
 
@@ -237,6 +241,10 @@ America primary import path is a text-selectable PDF statement because CSV
 export may not be available for every account flow. CSV remains supported when
 available, but OCR, password-protected PDFs, and broad PDF layout support are
 later work.
+Apple Card PDF support covers text-selectable statements whose content
+identifies Apple Card and Goldman Sachs Bank USA. These statements do not expose
+a stable account number, so they route through configured product refs such as
+`Apple Card`.
 ICICI and HDFC `.xls` support covers the first INR parser family because these
 spreadsheets contain reliable table columns, full account metadata, value
 dates, transaction dates, withdrawal/deposit amounts, and running balances.
@@ -255,9 +263,9 @@ justified.
 
 Multi-currency support means the schema, import normalization, reports, and
 budgets always carry a currency code. Bank of America PDF and CSV imports
-produce USD transactions. ICICI `.xls` imports produce INR transactions. HDFC
-`.xls` imports produce INR transactions. Other Indian bank parsers remain
-later work.
+produce USD transactions. Apple Card PDF imports produce USD credit-card
+transactions. ICICI `.xls` imports produce INR transactions. HDFC `.xls`
+imports produce INR transactions. Other Indian bank parsers remain later work.
 
 No cross-currency consolidation happens in early phases. Budgets and reports are
 per-currency unless a later design explicitly adds conversion.
@@ -559,13 +567,14 @@ duplicates of prior successful imports are detected by SHA-256 hash before
 parser work, recorded as `duplicate` attempts, and moved to `duplicates/` as a
 temporary conservative preservation policy. Import routing must be based on
 content extracted from the file, never the source filename. Bank of America
-PDFs, ICICI `.xls` files, and HDFC `.xls` files can be auto-routed by
-parser-detected account identity when it maps to exactly one configured
-account. `account_statement_refs` extends that identity model to statement
-formats that expose only last-four, masked, or product-level identifiers. CSV
-inbox imports still require an explicit account id until a supported CSV format
-provides reliable account metadata, except when the CSV file is an exact
-duplicate of a prior successful import. Automatic watching comes later.
+PDFs, Apple Card PDFs, ICICI `.xls` files, and HDFC `.xls` files can be
+auto-routed by parser-detected account identity when it maps to exactly one
+configured account. `account_statement_refs` extends that identity model to
+statement formats that expose only last-four, masked, or product-level
+identifiers. CSV inbox imports still require an explicit account id until a
+supported CSV format provides reliable account metadata, except when the CSV
+file is an exact duplicate of a prior successful import. Automatic watching
+comes later.
 
 All explicit-file and inbox imports can run with `--dry-run`. Dry-run mode
 uses the same parser, account validation, transaction hashing, duplicate
@@ -587,12 +596,15 @@ processed files, duplicate files, or remove inbox files.
    the planned duplicate path but do not copy, record, or remove the file.
 4. Detect file type.
 5. Infer bank, account reference, and statement period from parser-specific
-   signals. Bank of America PDFs support both `Statement Period: ... through
+   signals. PDF imports first detect the statement format from document
+   content. Bank of America PDFs support both `Statement Period: ... through
    ...` headers and account header lines shaped like `for ... to ... Account
-   number`. ICICI `.xls` imports use spreadsheet account, statement period,
-   value date, transaction date, withdrawal/deposit, and balance columns. HDFC
-   `.xls` imports use the analogous HDFC columns and skip masked separator and
-   statement-summary rows.
+   number`. Apple Card PDFs use the Apple Card / Goldman Sachs content
+   signature, statement period, total balance, payment rows, purchase/credit
+   rows, and product refs. ICICI `.xls` imports use spreadsheet account,
+   statement period, value date, transaction date, withdrawal/deposit, and
+   balance columns. HDFC `.xls` imports use the analogous HDFC columns and skip
+   masked separator and statement-summary rows.
 6. Parse into staged transactions.
 7. Resolve the parsed statement identity to a configured account. If
    `--account-id` was supplied, treat it as an assertion: when the document

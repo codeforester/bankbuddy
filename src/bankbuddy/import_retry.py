@@ -9,6 +9,7 @@ import sqlite3
 from bankbuddy.database import connect_database, initialize_database
 from bankbuddy.imports import ImportFailure
 from bankbuddy.imports import ImportSummary
+from bankbuddy.imports import APPLE_CARD_SOURCE_FORMAT
 from bankbuddy.imports import HDFC_SOURCE_FORMAT
 from bankbuddy.imports import ICICI_SOURCE_FORMAT
 from bankbuddy.imports import ParsedStatement
@@ -19,8 +20,10 @@ from bankbuddy.imports import import_boa_csv
 from bankbuddy.imports import import_boa_pdf
 from bankbuddy.imports import import_parsed_statement
 from bankbuddy.imports import normalize_account_number
+from bankbuddy.imports import parse_apple_card_pdf_text
 from bankbuddy.imports import parse_hdfc_xls
 from bankbuddy.imports import parse_icici_xls
+from bankbuddy.imports import resolve_parsed_statement_account_id
 from bankbuddy.paths import AppPaths
 
 
@@ -81,6 +84,29 @@ def retry_import_attempt(
             logger=logger,
         )
 
+    if source_format == APPLE_CARD_SOURCE_FORMAT:
+        parsed_statement = parse_apple_card_pdf_text(extract_pdf_text(retry_path))
+        if retry_account_id is None:
+            retry_account_id = account_id_for_parsed_statement(
+                paths,
+                parsed_statement,
+                source_format=source_format,
+            )
+            if retry_account_id is None:
+                raise RetryFailure(
+                    "No configured account matches Apple Card PDF statement "
+                    "references."
+                )
+        return import_parsed_statement(
+            paths,
+            retry_path,
+            account_id=int(retry_account_id),
+            parsed_statement=parsed_statement,
+            source_format=source_format,
+            import_label="PDF",
+            logger=logger,
+        )
+
     if source_format in {ICICI_SOURCE_FORMAT, HDFC_SOURCE_FORMAT}:
         parser = (
             parse_icici_xls
@@ -93,6 +119,7 @@ def retry_import_attempt(
             retry_account_id = account_id_for_parsed_statement(
                 paths,
                 parsed_statement,
+                source_format=source_format,
             )
             if retry_account_id is None:
                 account_suffix = account_number_suffix(parsed_statement.account_number)
@@ -198,30 +225,13 @@ def account_id_for_boa_pdf_account_number(
 def account_id_for_parsed_statement(
     paths: AppPaths,
     parsed_statement: ParsedStatement,
+    *,
+    source_format: str,
 ) -> int | None:
     """Return the configured account id matching parsed statement metadata."""
 
-    normalized_account_number = normalize_account_number(parsed_statement.account_number)
-    with connect_database(paths) as conn:
-        rows = conn.execute(
-            """
-            select
-                accounts.account_id,
-                accounts.account_number
-            from accounts
-            join banks using (bank_id)
-            where banks.bank_name = ?
-              and accounts.currency = ?
-            order by accounts.account_id
-            """,
-            (parsed_statement.bank_name, parsed_statement.currency),
-        ).fetchall()
-
-    matches = [
-        int(row["account_id"])
-        for row in rows
-        if normalize_account_number(row["account_number"]) == normalized_account_number
-    ]
-    if len(matches) != 1:
-        return None
-    return matches[0]
+    return resolve_parsed_statement_account_id(
+        paths,
+        parsed_statement=parsed_statement,
+        source_format=source_format,
+    )

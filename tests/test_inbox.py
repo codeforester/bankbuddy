@@ -12,6 +12,27 @@ BOA_CSV = """Date,Description,Amount,Running Bal.
 06/11/2026,PAYROLL,2500.00,2600.00
 """
 
+APPLE_CARD_PDF_TEXT = """
+Statement
+Apple Card Customer
+Example Person, example@example.com Aug 1 \u2014 Aug 31, 2025
+Total Balance $2,474.63
+as of Aug 31, 2025
+Apple Card is issued by Goldman Sachs Bank USA, Salt Lake City Branch.
+Payments
+Payments made by Example Person
+Date Description Amount
+08/31/2025 ACH Deposit Internet transfer from account ending in 1145 -$2,479.77
+Total payments for this period -$2,479.77
+Transactions
+Transactions by Example Person
+Date Description Daily Cash Amount
+08/01/2025 APPLE.COM/BILL ONE APPLE PARK WAY 3% $0.30 $9.99
+08/03/2025 REFUND MERCHANT 1% $0.10 -$5.00
+Total charges, credits and returns $4.99
+Daily Cash
+"""
+
 
 def boa_pdf_text(account_number: str = "123 456 789") -> str:
     return f"""
@@ -204,6 +225,51 @@ def test_import_inbox_routes_statement_by_account_statement_ref(
         "currency": "USD",
         "amount_minor_units": -1250,
     }
+
+
+def test_import_inbox_routes_apple_card_pdf_by_product_ref(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from bankbuddy.account_refs import add_account_statement_ref
+
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_account(
+        paths,
+        bank_name="Apple GS",
+        country="US",
+        account_number="111122220932",
+        account_type="credit_card",
+        currency="USD",
+    )
+    add_account_statement_ref(
+        paths,
+        account_id=account.account_id,
+        ref_type="product",
+        ref_value="Apple Card",
+        source_format="apple_card_pdf",
+    )
+    paths.inbox.mkdir(parents=True, exist_ok=True)
+    inbox_file = paths.inbox / "statement.pdf"
+    inbox_file.write_bytes(b"%PDF synthetic fixture placeholder")
+    monkeypatch.setattr(
+        "bankbuddy.imports.extract_pdf_text",
+        lambda _path: APPLE_CARD_PDF_TEXT,
+    )
+
+    summary = import_inbox(paths, dry_run=True)
+
+    assert summary.total_files == 1
+    assert summary.successful_files == 1
+    assert summary.failed_files == 0
+    assert summary.results[0].file_name == "statement.pdf"
+    assert summary.results[0].status == "success"
+    assert summary.results[0].rows_parsed == 3
+    assert summary.results[0].rows_imported == 3
+    assert summary.results[0].processed_path == (
+        "processed/apple-gs/2025/08/apple-gs_0932_2025-08-01_2025-08-31.pdf"
+    )
+    assert inbox_file.is_file()
 
 
 def test_import_inbox_dry_run_reports_duplicate_without_archive_or_history(

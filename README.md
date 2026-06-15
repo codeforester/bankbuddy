@@ -191,6 +191,11 @@ header and the account header found in eStatement text. BOA PDF files in
 number; CSV inbox imports still require `--account-id` unless the file is an
 exact duplicate of a prior successful import.
 
+Apple Card imports support text-selectable PDF statements. BankBuddy detects
+Apple Card PDFs from document content, routes them with configured product refs
+such as `Apple Card`, imports purchases as debits and payments/credits as
+credits, and keeps zero-activity statements in the processed archive.
+
 ICICI Bank and HDFC Bank imports support old Excel `.xls` statement exports.
 These `.xls` files can be routed from `inbox/` by the full account number in
 the spreadsheet when exactly one configured INR account for that bank matches.
