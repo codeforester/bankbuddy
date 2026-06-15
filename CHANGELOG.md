@@ -27,6 +27,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Documented the planned TaxBuddy layer, including the second `taxbuddy` CLI,
+  shared SQLite/database boundary, local-first tax document storage, readiness
+  scope, and follow-on implementation issues.
 - Added `bankbuddy bank list`, `bankbuddy bank rename`, and
   `bankbuddy account update --display-name` for correcting configured bank and
   account display labels without changing stored account numbers.
