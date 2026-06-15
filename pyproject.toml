@@ -3,6 +3,7 @@ name = "bankbuddy"
 version = "0.1.0"
 description = "Local-first personal finance tracking."
 readme = "README.md"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
   "click>=8.1,<9",

@@ -7,6 +7,10 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ## [Unreleased]
 
+### Changed
+
+- Relicensed bankbuddy prospectively from MIT to AGPL-3.0-or-later.
+
 ### Fixed
 
 - Added a dry-run-first repair command for historical Bank of America PDF
