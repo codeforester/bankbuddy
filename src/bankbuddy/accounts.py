@@ -14,6 +14,22 @@ class AccountAlreadyExistsError(ValueError):
     """Raised when the bank/account identity is already configured."""
 
 
+class AccountNotFoundError(ValueError):
+    """Raised when an account id is not configured."""
+
+
+class AccountUpdateError(ValueError):
+    """Raised when an account update request is invalid."""
+
+
+class BankAlreadyExistsError(ValueError):
+    """Raised when a bank name already exists."""
+
+
+class BankNotFoundError(ValueError):
+    """Raised when a bank id is not configured."""
+
+
 class CountryCodeError(ValueError):
     """Raised when a country value cannot be normalized."""
 
@@ -26,6 +42,16 @@ COUNTRY_ALIASES = {
     "unitedstates": "US",
     "unitedstatesofamerica": "US",
 }
+
+
+@dataclass(frozen=True)
+class Bank:
+    """A configured financial institution."""
+
+    bank_id: int
+    bank_name: str
+    country: str
+    default_currency: str
 
 
 @dataclass(frozen=True)
@@ -169,34 +195,115 @@ def list_accounts(paths: AppPaths) -> list[Account]:
     initialize_database(paths)
     with connect_database(paths) as conn:
         rows = conn.execute(
-            """
-            select
-                accounts.account_id,
-                banks.bank_name,
-                banks.country,
-                accounts.account_number,
-                accounts.account_type,
-                accounts.currency,
-                accounts.statement_account_ref,
-                accounts.display_name
-            from accounts
-            join banks using (bank_id)
+            account_select_query()
+            + """
             order by banks.bank_name, accounts.account_id
             """
         ).fetchall()
-    return [
-        Account(
-            account_id=int(row["account_id"]),
-            bank_name=row["bank_name"],
-            country=row["country"],
-            account_number=row["account_number"],
-            account_type=row["account_type"],
-            currency=row["currency"],
-            statement_account_ref=row["statement_account_ref"],
-            display_name=row["display_name"],
+    return [account_from_row(row) for row in rows]
+
+
+def list_banks(paths: AppPaths) -> list[Bank]:
+    """Return configured banks ordered by name."""
+
+    initialize_database(paths)
+    with connect_database(paths) as conn:
+        rows = conn.execute(
+            """
+            select bank_id, bank_name, country, default_currency
+            from banks
+            order by bank_name, bank_id
+            """
+        ).fetchall()
+    return [bank_from_row(row) for row in rows]
+
+
+def rename_bank(
+    paths: AppPaths,
+    *,
+    bank_id: int,
+    bank_name: str,
+) -> Bank:
+    """Rename a configured bank."""
+
+    normalized_bank_name = bank_name.strip()
+    if not normalized_bank_name:
+        raise ValueError("Bank name cannot be empty.")
+
+    initialize_database(paths)
+    with connect_database(paths) as conn:
+        existing = conn.execute(
+            "select bank_id from banks where bank_id = ?",
+            (bank_id,),
+        ).fetchone()
+        if existing is None:
+            raise BankNotFoundError(f"Bank not found: {bank_id}")
+
+        try:
+            conn.execute(
+                """
+                update banks
+                set bank_name = ?,
+                    updated_at = current_timestamp
+                where bank_id = ?
+                """,
+                (normalized_bank_name, bank_id),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise BankAlreadyExistsError(
+                f"Bank already exists: {normalized_bank_name}"
+            ) from exc
+
+        row = conn.execute(
+            """
+            select bank_id, bank_name, country, default_currency
+            from banks
+            where bank_id = ?
+            """,
+            (bank_id,),
+        ).fetchone()
+        conn.commit()
+    return bank_from_row(row)
+
+
+def update_account(
+    paths: AppPaths,
+    *,
+    account_id: int,
+    display_name: str | None = None,
+) -> Account:
+    """Update safe account metadata."""
+
+    if display_name is None:
+        raise AccountUpdateError("No account updates requested.")
+
+    initialize_database(paths)
+    with connect_database(paths) as conn:
+        existing = conn.execute(
+            "select account_id from accounts where account_id = ?",
+            (account_id,),
+        ).fetchone()
+        if existing is None:
+            raise AccountNotFoundError(f"Account not found: {account_id}")
+
+        conn.execute(
+            """
+            update accounts
+            set display_name = ?,
+                updated_at = current_timestamp
+            where account_id = ?
+            """,
+            (empty_to_none(display_name), account_id),
         )
-        for row in rows
-    ]
+        row = conn.execute(
+            account_select_query()
+            + """
+            where accounts.account_id = ?
+            """,
+            (account_id,),
+        ).fetchone()
+        conn.commit()
+    return account_from_row(row)
 
 
 def list_account_summaries(paths: AppPaths) -> list[AccountSummary]:
@@ -279,6 +386,50 @@ def account_summary_from_row(row: sqlite3.Row) -> AccountSummary:
         latest_balance_as_of_date=row["latest_balance_as_of_date"],
         latest_balance_source_file_id=row["latest_balance_source_file_id"],
         latest_balance_source=row["latest_balance_source"],
+    )
+
+
+def account_select_query() -> str:
+    """Return the common account select clause."""
+
+    return """
+        select
+            accounts.account_id,
+            banks.bank_name,
+            banks.country,
+            accounts.account_number,
+            accounts.account_type,
+            accounts.currency,
+            accounts.statement_account_ref,
+            accounts.display_name
+        from accounts
+        join banks using (bank_id)
+        """
+
+
+def account_from_row(row: sqlite3.Row) -> Account:
+    """Build an account dataclass from a SQLite row."""
+
+    return Account(
+        account_id=int(row["account_id"]),
+        bank_name=row["bank_name"],
+        country=row["country"],
+        account_number=row["account_number"],
+        account_type=row["account_type"],
+        currency=row["currency"],
+        statement_account_ref=row["statement_account_ref"],
+        display_name=row["display_name"],
+    )
+
+
+def bank_from_row(row: sqlite3.Row) -> Bank:
+    """Build a bank dataclass from a SQLite row."""
+
+    return Bank(
+        bank_id=int(row["bank_id"]),
+        bank_name=row["bank_name"],
+        country=row["country"],
+        default_currency=row["default_currency"],
     )
 
 

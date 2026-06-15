@@ -348,6 +348,136 @@ def test_account_list_outputs_configured_accounts_with_last_four(tmp_path) -> No
     assert "123456789" not in list_result.output
 
 
+def test_bank_list_outputs_configured_banks_with_pretty_table(tmp_path) -> None:
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Bank of America",
+            "--country",
+            "US",
+            "--account-number",
+            "123456789",
+            "--type",
+            "checking",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(main, ["bank", "list"], env=env)
+
+    assert result.exit_code == 0
+    assert "ID | Bank            | Country | Currency" in result.output
+    assert " 1 | Bank of America | US      | USD" in result.output
+
+
+def test_bank_rename_updates_displayed_bank_name(tmp_path) -> None:
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path)}
+    add_result = runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Apple GS",
+            "--country",
+            "US",
+            "--account-number",
+            "111122220932",
+            "--type",
+            "credit_card",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    rename_result = runner.invoke(
+        main,
+        ["bank", "rename", "1", "--name", "Apple Card"],
+        env=env,
+    )
+    list_result = runner.invoke(main, ["account", "list"], env=env)
+
+    assert add_result.exit_code == 0
+    assert rename_result.exit_code == 0
+    assert "Renamed bank 1 to Apple Card." in rename_result.output
+    assert "Apple Card" in list_result.output
+    assert "Apple GS" not in list_result.output
+
+
+def test_account_update_changes_display_name(tmp_path) -> None:
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Apple Card",
+            "--country",
+            "US",
+            "--account-number",
+            "111122220932",
+            "--type",
+            "credit_card",
+            "--currency",
+            "USD",
+            "--display-name",
+            "Old Name",
+        ],
+        env=env,
+    )
+
+    update_result = runner.invoke(
+        main,
+        ["account", "update", "1", "--display-name", "Apple Card"],
+        env=env,
+    )
+    show_result = runner.invoke(main, ["account", "show", "1"], env=env)
+
+    assert update_result.exit_code == 0
+    assert "Updated account 1." in update_result.output
+    assert "Name: Apple Card" in show_result.output
+    assert "Old Name" not in show_result.output
+
+
+def test_account_update_rejects_missing_updates(tmp_path) -> None:
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path)}
+    runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Apple Card",
+            "--country",
+            "US",
+            "--account-number",
+            "111122220932",
+            "--type",
+            "credit_card",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+
+    result = runner.invoke(main, ["account", "update", "1"], env=env)
+
+    assert result.exit_code == 1
+    assert "No account updates requested." in result.output
+
+
 def test_account_summary_outputs_latest_balance_snapshot(tmp_path) -> None:
     runner = CliRunner()
     add_result = runner.invoke(

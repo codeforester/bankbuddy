@@ -61,7 +61,10 @@ bankbuddy account add \
   --account-number "<actual-number>" \
   --type savings \
   --currency INR
+bankbuddy bank list
+bankbuddy bank rename BANK_ID --name "Apple Card"
 bankbuddy account list
+bankbuddy account update ACCOUNT_ID --display-name "Apple Card"
 bankbuddy account summary
 bankbuddy account show 1
 bankbuddy account show 1 --show-full-account-number
@@ -178,6 +181,11 @@ suffixes.
 numbers by default. Use `bankbuddy account show ACCOUNT_ID
 --show-full-account-number` only when you need to inspect the stored actual
 account number for one account.
+
+Use `bankbuddy bank list` and `bankbuddy bank rename BANK_ID --name NAME` to
+fix bank labels such as `Apple GS` versus `Apple Card`. Use `bankbuddy account
+update ACCOUNT_ID --display-name NAME` to adjust a friendly account label
+without changing the stored actual account number.
 
 `bankbuddy category list` shows the built-in categories. Use
 `bankbuddy tx categorize TRANSACTION_ID CATEGORY` to manually assign one

@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.30
+**Version:** 1.31
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.31: Added `bank list`, `bank rename`, and
+  `account update --display-name` for correcting configured bank and account
+  display labels without changing stored actual account numbers.
 - v1.30: Added Apple Card text-PDF imports with content-based PDF detection,
   product-ref account routing, credit-card sign normalization, zero-activity
   statement archival, and latest balance snapshots.
@@ -873,7 +876,10 @@ bankbuddy budget delete CATEGORY CURRENCY
 
 ```text
 bankbuddy account add
+bankbuddy bank list
+bankbuddy bank rename BANK_ID --name NAME
 bankbuddy account list
+bankbuddy account update ACCOUNT_ID --display-name NAME
 bankbuddy account summary
 bankbuddy account show ACCOUNT_ID
 bankbuddy account show ACCOUNT_ID --show-full-account-number
@@ -893,6 +899,11 @@ also expose latest statement-derived balance snapshots, as-of dates, and
 source files. `account ref add --help` should include copyable examples for
 product identity refs such as Apple Card, last-four suffix refs, and full
 account number refs.
+
+`bank rename` changes the configured bank label used in future command output
+and account matching by bank name. Historical archived file paths are not
+renamed. `account update --display-name` changes only the friendly account
+label; stored actual account numbers remain immutable from the CLI.
 
 Password commands should prompt interactively. Passwords should not be passed as
 plain CLI arguments.
