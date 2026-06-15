@@ -635,6 +635,18 @@ def test_account_ref_add_list_and_remove(tmp_path) -> None:
     assert "No account statement refs configured." in empty_list_result.output
 
 
+def test_account_ref_add_help_includes_examples() -> None:
+    result = CliRunner().invoke(main, ["account", "ref", "add", "--help"])
+
+    assert result.exit_code == 0
+    assert "Examples:" in result.output
+    assert "--type product --value \"Apple Card\" --source-format apple_card_pdf" in (
+        result.output
+    )
+    assert "--type last4 --value 1145 --source-format boa_pdf" in result.output
+    assert "--type full_account_number --value <actual-number>" in result.output
+
+
 def test_account_ref_add_masks_full_account_numbers_in_list(tmp_path) -> None:
     runner = CliRunner()
     env = {"BANKBUDDY_HOME": str(tmp_path)}

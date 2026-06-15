@@ -1,11 +1,13 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.28
+**Version:** 1.29
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.29: Added concrete `account ref add --help` examples for product,
+  last-four, and full-account-number statement reference mappings.
 - v1.28: Made `account list` use the standard pretty-table renderer and added
   `account show --show-full-account-number` as an explicit opt-in reveal for
   one stored account number.
@@ -876,7 +878,9 @@ human-readable output and mask account numbers by default. `account show
 --show-full-account-number` is the explicit one-account reveal path for
 checking the stored actual account number. `account summary` and `account show`
 also expose latest statement-derived balance snapshots, as-of dates, and
-source files.
+source files. `account ref add --help` should include copyable examples for
+product identity refs such as Apple Card, last-four suffix refs, and full
+account number refs.
 
 Password commands should prompt interactively. Passwords should not be passed as
 plain CLI arguments.

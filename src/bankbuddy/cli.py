@@ -352,7 +352,17 @@ def account_ref_add(
     ref_value: str,
     source_format: str | None,
 ) -> None:
-    """Add an account statement reference."""
+    """Add an account statement reference.
+
+    \b
+    Examples:
+      Apple Card product identity:
+        bankbuddy account ref add --account-id 5 --type product --value "Apple Card" --source-format apple_card_pdf
+      Last-four statement suffix:
+        bankbuddy account ref add --account-id 1 --type last4 --value 1145 --source-format boa_pdf
+      Full account number:
+        bankbuddy account ref add --account-id 1 --type full_account_number --value <actual-number>
+    """
 
     runtime = runtime_from_context(ctx)
     paths = resolve_app_paths(environment=runtime.environment)
