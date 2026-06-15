@@ -27,6 +27,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added the first `taxbuddy` CLI slice with tax document import, dry-run
+  planning, SHA-256 idempotency, canonical `tax/processed/...` archival,
+  `tax_documents` metadata indexing, and `taxbuddy docs list/show`.
 - Added `bankbuddy storage migrate-layout --dry-run|--apply` for moving legacy
   app homes into the canonical `database/` and `bank/` storage layout while
   updating stored archive paths.

@@ -124,6 +124,15 @@ bankbuddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3
 bankbuddy export sqlite --output ~/Desktop/bankbuddy-backup.sqlite3 --force
 bankbuddy storage migrate-layout --dry-run
 bankbuddy storage migrate-layout --apply
+taxbuddy status
+taxbuddy import --dry-run --file path/to/1099-int.pdf
+taxbuddy import --file path/to/1099-int.pdf
+taxbuddy import --dry-run inbox
+taxbuddy import inbox
+taxbuddy docs list
+taxbuddy docs list --year 2025
+taxbuddy docs list --type 1099-INT
+taxbuddy docs show 1
 ```
 
 ## Environments
@@ -260,19 +269,32 @@ Store them in a private location.
 
 ## TaxBuddy Roadmap
 
-BankBuddy is the current banking CLI. The planned TaxBuddy layer will add a
-second CLI, `taxbuddy`, in the same repo and SQLite database for tax document
-readiness: indexing received tax documents, tracking expected forms, surfacing
-missing or waived documents, and producing annual readiness summaries.
+BankBuddy is the banking CLI. TaxBuddy is the tax document readiness CLI in the
+same repo and SQLite database. The first `taxbuddy` slice indexes received tax
+documents under the active `BANKBUDDY_HOME`, archives them under
+`tax/processed/<jurisdiction>/<year>/<type>/`, and lets you inspect the index
+without opening SQLite.
+
+Supported MVP imports use content extracted from text-selectable PDFs or `.txt`
+fixtures. TaxBuddy currently detects conservative metadata for forms such as
+`1099-INT`, `1099-DIV`, `1099-B`, `W-2`, `FORM_26AS`, and `AIS`: jurisdiction,
+tax year, source entity, and an optional account suffix. Ambiguous document
+type, year, jurisdiction, or source fails clearly instead of guessing from the
+source filename.
+
+Use `taxbuddy import --dry-run --file FILE` or `taxbuddy import --dry-run inbox`
+to preview metadata, duplicate-by-hash decisions, and canonical archive paths
+without writing the database or copying/removing files. Real imports are
+idempotent by SHA-256 file hash. Raw extracted tax document text is not stored
+durably.
 
 TaxBuddy will not file taxes, prepare returns, or calculate final tax
 liability. Local storage remains the default. An iCloud or other synced tax
 document folder may be configured later for spouse access, but sync is opt-in
 and does not silently move the SQLite database.
 
-The planned work is tracked in GitHub issues: #98 for the accepted design, #99
-for tax document import and metadata indexing, and #100 for expected-form gap
-detection and annual readiness summaries.
+The remaining planned work is tracked in GitHub issue #100 for expected-form
+gap detection and annual readiness summaries.
 
 Run tests:
 

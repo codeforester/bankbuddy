@@ -67,6 +67,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "category_rules",
         "budgets",
         "account_statement_refs",
+        "tax_documents",
     }.issubset(table_names)
     assert migration_versions == [
         "0001_core_schema",
@@ -77,6 +78,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "0006_normalize_bank_country_codes",
         "0007_add_rental_income_category",
         "0008_account_statement_refs",
+        "0009_tax_documents",
     ]
     assert categories == {
         "Dining": "expense",
@@ -110,7 +112,7 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
         ).fetchone()[0]
         category_count = conn.execute("select count(*) from categories").fetchone()[0]
 
-    assert migration_count == 8
+    assert migration_count == 9
     assert category_count == 16
 
 
@@ -228,6 +230,7 @@ def test_schema_tracks_value_date_and_latest_account_balance(tmp_path) -> None:
         "0006_normalize_bank_country_codes",
         "0007_add_rental_income_category",
         "0008_account_statement_refs",
+        "0009_tax_documents",
     ]
 
 
@@ -250,6 +253,93 @@ def test_schema_tracks_account_statement_refs(tmp_path) -> None:
     assert columns["ref_type"] == "TEXT"
     assert columns["ref_value"] == "TEXT"
     assert columns["normalized_ref_value"] == "TEXT"
+
+
+def test_tax_documents_schema_tracks_imported_document_metadata(tmp_path) -> None:
+    paths = resolve_app_paths(tmp_path)
+
+    initialize_database(paths)
+
+    with connect_database(paths) as conn:
+        columns = {
+            row[1]: row[2]
+            for row in conn.execute("pragma table_info(tax_documents)").fetchall()
+        }
+        migration_versions = [
+            row["version"]
+            for row in conn.execute(
+                "select version from schema_migrations order by version"
+            ).fetchall()
+        ]
+        conn.execute(
+            """
+            insert into tax_documents (
+                file_hash,
+                original_file_name,
+                canonical_file_name,
+                source_path,
+                processed_path,
+                document_type,
+                jurisdiction,
+                tax_year,
+                source_entity,
+                person_label,
+                account_ref
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "hash-1099-int",
+                "download.pdf",
+                "2025_1099-int_bank-of-america_1234.pdf",
+                "/tmp/download.pdf",
+                "tax/processed/us/2025/1099-int/"
+                "2025_1099-int_bank-of-america_1234.pdf",
+                "1099-INT",
+                "US",
+                2025,
+                "Bank of America",
+                "ramesh",
+                "1234",
+            ),
+        )
+        row = conn.execute(
+            """
+            select
+                document_type,
+                jurisdiction,
+                tax_year,
+                source_entity,
+                person_label,
+                account_ref
+            from tax_documents
+            """
+        ).fetchone()
+
+    assert {
+        "tax_document_id": "INTEGER",
+        "file_hash": "TEXT",
+        "original_file_name": "TEXT",
+        "canonical_file_name": "TEXT",
+        "source_path": "TEXT",
+        "processed_path": "TEXT",
+        "document_type": "TEXT",
+        "jurisdiction": "TEXT",
+        "tax_year": "INTEGER",
+        "source_entity": "TEXT",
+        "person_label": "TEXT",
+        "account_ref": "TEXT",
+        "imported_at": "TEXT",
+    }.items() <= columns.items()
+    assert migration_versions[-1] == "0009_tax_documents"
+    assert dict(row) == {
+        "document_type": "1099-INT",
+        "jurisdiction": "US",
+        "tax_year": 2025,
+        "source_entity": "Bank of America",
+        "person_label": "ramesh",
+        "account_ref": "1234",
+    }
 
 
 def test_rental_income_category_migration_backfills_existing_databases(
