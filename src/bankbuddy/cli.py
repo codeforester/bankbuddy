@@ -22,13 +22,21 @@ from bankbuddy.account_refs import list_account_statement_refs
 from bankbuddy.account_refs import remove_account_statement_ref
 from bankbuddy.accounts import Account
 from bankbuddy.accounts import AccountAlreadyExistsError
+from bankbuddy.accounts import AccountNotFoundError
 from bankbuddy.accounts import AccountSummary
+from bankbuddy.accounts import AccountUpdateError
+from bankbuddy.accounts import Bank
+from bankbuddy.accounts import BankAlreadyExistsError
+from bankbuddy.accounts import BankNotFoundError
 from bankbuddy.accounts import CountryCodeError
 from bankbuddy.accounts import add_account
 from bankbuddy.accounts import get_account_summary
 from bankbuddy.accounts import list_account_summaries
 from bankbuddy.accounts import list_accounts
+from bankbuddy.accounts import list_banks
 from bankbuddy.accounts import masked_account_number
+from bankbuddy.accounts import rename_bank
+from bankbuddy.accounts import update_account
 from bankbuddy.audit import AccountStatementAudit
 from bankbuddy.audit import audit_statement_coverage
 from bankbuddy.audit import AuditFilterError
@@ -178,6 +186,49 @@ def init_command(ctx: click.Context) -> None:
 
 
 @main.group()
+def bank() -> None:
+    """Manage configured banks."""
+
+
+@bank.command("list")
+@click.pass_context
+def bank_list(ctx: click.Context) -> None:
+    """List configured banks."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    banks = list_banks(paths)
+    runtime.log.debug("bank_list count=%s", len(banks))
+    if not banks:
+        click.echo("No banks configured.")
+        return
+
+    render_bank_list(banks)
+
+
+@bank.command("rename")
+@click.argument("bank_id", type=int)
+@click.option("--name", "bank_name", required=True, help="New bank name.")
+@click.pass_context
+def bank_rename(
+    ctx: click.Context,
+    bank_id: int,
+    bank_name: str,
+) -> None:
+    """Rename a configured bank."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        renamed = rename_bank(paths, bank_id=bank_id, bank_name=bank_name)
+    except (BankAlreadyExistsError, BankNotFoundError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug("bank_renamed bank_id=%s bank=%s", bank_id, renamed.bank_name)
+    click.echo(f"Renamed bank {renamed.bank_id} to {renamed.bank_name}.")
+
+
+@main.group()
 def account() -> None:
     """Manage configured bank accounts."""
 
@@ -269,6 +320,32 @@ def account_list(ctx: click.Context) -> None:
         return
 
     render_account_list(accounts)
+
+
+@account.command("update")
+@click.argument("account_id", type=int)
+@click.option("--display-name", help="Set or clear the friendly account label.")
+@click.pass_context
+def account_update(
+    ctx: click.Context,
+    account_id: int,
+    display_name: str | None,
+) -> None:
+    """Update safe account metadata."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        updated = update_account(
+            paths,
+            account_id=account_id,
+            display_name=display_name,
+        )
+    except (AccountNotFoundError, AccountUpdateError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug("account_updated account_id=%s", updated.account_id)
+    click.echo(f"Updated account {updated.account_id}.")
 
 
 @account.command("summary")
@@ -528,6 +605,24 @@ def render_account_statement_refs(refs: list[AccountStatementRef]) -> None:
             for ref in refs
         ],
         ["right", "right", "left", "left", "left", "left"],
+    )
+
+
+def render_bank_list(banks: list[Bank]) -> None:
+    """Render configured banks as an aligned table."""
+
+    render_pretty_table(
+        ["ID", "Bank", "Country", "Currency"],
+        [
+            [
+                str(bank.bank_id),
+                bank.bank_name,
+                bank.country,
+                bank.default_currency,
+            ]
+            for bank in banks
+        ],
+        ["right", "left", "left", "left"],
     )
 
 

@@ -27,6 +27,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy bank list`, `bankbuddy bank rename`, and
+  `bankbuddy account update --display-name` for correcting configured bank and
+  account display labels without changing stored account numbers.
 - Added Apple Card PDF imports with content-based PDF routing, product-ref
   account matching, credit-card sign normalization, zero-activity statement
   support, and latest statement balance snapshots.
