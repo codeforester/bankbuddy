@@ -44,6 +44,7 @@ bankbuddy account add \
 bankbuddy account list
 bankbuddy account summary
 bankbuddy account show 1
+bankbuddy account show 1 --show-full-account-number
 bankbuddy account ref add --account-id 1 --type last4 --value 1145
 bankbuddy account ref add \
   --account-id 1 \
@@ -152,6 +153,11 @@ debug logs avoid full account numbers and raw statement contents.
 `--category`, and `--uncategorized`. Full account numbers are accepted for
 filtering, but transaction output keeps using display names or masked account
 suffixes.
+
+`bankbuddy account list`, `account summary`, and `account show` mask account
+numbers by default. Use `bankbuddy account show ACCOUNT_ID
+--show-full-account-number` only when you need to inspect the stored actual
+account number for one account.
 
 `bankbuddy category list` shows the built-in categories. Use
 `bankbuddy tx categorize TRANSACTION_ID CATEGORY` to manually assign one

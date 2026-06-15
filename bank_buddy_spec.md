@@ -1,11 +1,14 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.27
+**Version:** 1.28
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.28: Made `account list` use the standard pretty-table renderer and added
+  `account show --show-full-account-number` as an explicit opt-in reveal for
+  one stored account number.
 - v1.27: Added first-class `account_statement_refs` for parser-visible
   account identifiers, plus `account ref` CLI management. Import routing is
   based on content extracted from files, not source filenames, and explicit
@@ -859,6 +862,7 @@ bankbuddy account add
 bankbuddy account list
 bankbuddy account summary
 bankbuddy account show ACCOUNT_ID
+bankbuddy account show ACCOUNT_ID --show-full-account-number
 bankbuddy account ref add --account-id ACCOUNT_ID --type TYPE --value VALUE
 bankbuddy account ref add --account-id ACCOUNT_ID --type TYPE --value VALUE --source-format FORMAT
 bankbuddy account ref list
@@ -867,9 +871,12 @@ bankbuddy export sqlite --output FILE
 bankbuddy export sqlite --output FILE --force
 ```
 
-`account list` stays compact for account setup. `account summary` and
-`account show` expose latest statement-derived balance snapshots, as-of dates,
-and source files without printing full account numbers.
+`account list`, `account summary`, and `account show` use aligned
+human-readable output and mask account numbers by default. `account show
+--show-full-account-number` is the explicit one-account reveal path for
+checking the stored actual account number. `account summary` and `account show`
+also expose latest statement-derived balance snapshots, as-of dates, and
+source files.
 
 Password commands should prompt interactively. Passwords should not be passed as
 plain CLI arguments.

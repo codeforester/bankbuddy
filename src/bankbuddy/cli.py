@@ -20,6 +20,7 @@ from bankbuddy.account_refs import display_ref_value
 from bankbuddy.account_refs import display_source_format
 from bankbuddy.account_refs import list_account_statement_refs
 from bankbuddy.account_refs import remove_account_statement_ref
+from bankbuddy.accounts import Account
 from bankbuddy.accounts import AccountAlreadyExistsError
 from bankbuddy.accounts import AccountSummary
 from bankbuddy.accounts import CountryCodeError
@@ -267,14 +268,7 @@ def account_list(ctx: click.Context) -> None:
         click.echo("No accounts configured.")
         return
 
-    click.echo("ID  Bank  Name  Type  Currency  Account")
-    for account in accounts:
-        name = account.display_name or "-"
-        click.echo(
-            f"{account.account_id}  {account.bank_name}  {name}  "
-            f"{account.account_type}  {account.currency}  "
-            f"{masked_account_number(account.account_number)}"
-        )
+    render_account_list(accounts)
 
 
 @account.command("summary")
@@ -295,8 +289,17 @@ def account_summary(ctx: click.Context) -> None:
 
 @account.command("show")
 @click.argument("account_id", type=int)
+@click.option(
+    "--show-full-account-number",
+    is_flag=True,
+    help="Show the full account number for this account.",
+)
 @click.pass_context
-def account_show(ctx: click.Context, account_id: int) -> None:
+def account_show(
+    ctx: click.Context,
+    account_id: int,
+    show_full_account_number: bool,
+) -> None:
     """Show one configured bank account."""
 
     runtime = runtime_from_context(ctx)
@@ -306,7 +309,10 @@ def account_show(ctx: click.Context, account_id: int) -> None:
         raise click.ClickException(f"Account not found: {account_id}")
 
     runtime.log.debug("account_show account_id=%s", account_id)
-    render_account_detail(account)
+    render_account_detail(
+        account,
+        show_full_account_number=show_full_account_number,
+    )
 
 
 @account.group("ref")
@@ -451,7 +457,31 @@ def render_account_summary(accounts: list[AccountSummary]) -> None:
     )
 
 
-def render_account_detail(account: AccountSummary) -> None:
+def render_account_list(accounts: list[Account]) -> None:
+    """Render configured accounts as an aligned table."""
+
+    render_pretty_table(
+        ["ID", "Bank", "Name", "Type", "Currency", "Account"],
+        [
+            [
+                str(account.account_id),
+                account.bank_name,
+                account.display_name or "-",
+                account.account_type,
+                account.currency,
+                masked_account_number(account.account_number),
+            ]
+            for account in accounts
+        ],
+        ["right", "left", "left", "left", "left", "left"],
+    )
+
+
+def render_account_detail(
+    account: AccountSummary,
+    *,
+    show_full_account_number: bool = False,
+) -> None:
     """Render a single account detail view."""
 
     click.echo(f"ID: {account.account_id}")
@@ -460,7 +490,12 @@ def render_account_detail(account: AccountSummary) -> None:
     click.echo(f"Name: {account.display_name or '-'}")
     click.echo(f"Type: {account.account_type}")
     click.echo(f"Currency: {account.currency}")
-    click.echo(f"Account: {masked_account_number(account.account_number)}")
+    account_number = (
+        account.account_number
+        if show_full_account_number
+        else masked_account_number(account.account_number)
+    )
+    click.echo(f"Account: {account_number}")
     click.echo(f"Latest balance: {format_account_balance(account)}")
     click.echo(f"Latest balance as of: {account.latest_balance_as_of_date or '-'}")
     click.echo(f"Latest balance source: {account.latest_balance_source or '-'}")

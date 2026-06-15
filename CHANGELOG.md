@@ -23,6 +23,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy account show --show-full-account-number` for explicit
+  one-account inspection of the stored actual account number.
 - Added `account_statement_refs` and `bankbuddy account ref` commands for
   content-based statement account routing, including explicit-account mismatch
   protection when a document identity maps to another configured account.
@@ -109,6 +111,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Changed
 
+- Rendered `bankbuddy account list` as the standard aligned pretty table while
+  continuing to mask account numbers by default.
 - Normalized account bank country values to ISO 3166-1 alpha-2 codes such as
   `US` and `IN`, while accepting common friendly aliases during account setup.
 - Hid the advanced `account add --statement-ref` option from normal help so
