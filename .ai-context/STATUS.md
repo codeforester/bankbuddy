@@ -8,6 +8,7 @@ section is `Unreleased`.
 ## Current Product Capabilities
 
 - Base-managed setup, activation, and validation.
+- Base-managed GitHub Project intake fallback for externally created issues.
 - Local SQLite initialization and ordered migrations.
 - Local data homes for `prod`, `dev`, and named environments.
 - Banking CLI commands for banks, accounts, statement refs, imports,

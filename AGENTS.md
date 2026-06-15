@@ -6,6 +6,9 @@ precedence over this baseline.
 ## Workflow
 
 1. Create or choose a GitHub issue before implementation work.
+   Prefer `basectl gh issue create` over plain `gh issue create` so Base can
+   add the issue to the repo-named GitHub Project and apply
+   `.github/base-project.yml` defaults immediately.
 2. Use one standard issue label: `bug`, `enhancement`, `documentation`,
    `ci`, or `security`.
 3. Branch from the issue with:
@@ -25,6 +28,16 @@ precedence over this baseline.
    `Fixes #<issue>` or `Closes #<issue>` when merge should close the issue.
 6. Preserve existing user changes. Do not overwrite project-owned files unless
    the user explicitly asks for that edit.
+
+If an issue is created through the GitHub UI, plain `gh issue create`, or an
+external connector, the Project Intake workflow should add it to the repo
+Project. If Project fields still look wrong, run `basectl repo configure` or
+`basectl gh project issue set-fields` to reconcile the item before starting
+implementation.
+
+The Project Intake workflow needs a `BASE_PROJECT_TOKEN` Actions secret with
+GitHub Project write access when the default `GITHUB_TOKEN` cannot update the
+user-owned Project. Keep that token in GitHub Actions secrets, not in the repo.
 
 ## Validation
 
