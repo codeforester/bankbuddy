@@ -10,6 +10,7 @@ basectl check bankbuddy
 basectl doctor bankbuddy
 basectl test bankbuddy
 basectl activate bankbuddy
+basectl gh issue create --category enhancement --title "..."
 uv sync
 uv run pytest
 ./tests/validate.sh

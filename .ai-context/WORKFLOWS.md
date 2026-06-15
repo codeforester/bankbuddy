@@ -5,6 +5,8 @@
 Use the repo guidance in `AGENTS.md` and `CONTRIBUTING.md`:
 
 1. Create or choose a GitHub issue before implementation work.
+   Prefer `basectl gh issue create` so Base adds the issue to the repo Project
+   and applies `.github/base-project.yml` defaults.
 2. Use one primary label: `bug`, `enhancement`, `documentation`, `ci`, or
    `security`.
 3. Branch from `origin/main` with `<category>/<issue>-<YYYYMMDD>-<slug>`.
@@ -12,6 +14,11 @@ Use the repo guidance in `AGENTS.md` and `CONTRIBUTING.md`:
 5. Keep the PR scoped to one issue and link it with `Fixes #<issue>` or
    `Closes #<issue>` when merge should close the issue.
 6. Run the relevant narrow tests and then the project validation command.
+
+`.github/workflows/project-intake.yml` is the fallback for issues created
+through the GitHub UI, plain `gh issue create`, or external connectors. It
+adds or reconciles issues into the repo-named Project on open, reopen, close,
+or manual dispatch when `BASE_PROJECT_TOKEN` has Project write access.
 
 ## Validation
 
@@ -27,6 +34,7 @@ Useful narrower checks include:
 uv run pytest tests/test_tax_documents.py -q
 uv run pytest tests/test_imports.py -q
 uv run pytest tests/test_cli.py -q
+basectl repo check .
 git diff --check
 ```
 
