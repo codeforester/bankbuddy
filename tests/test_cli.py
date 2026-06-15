@@ -1,6 +1,7 @@
 from click.testing import CliRunner
 
 from bankbuddy.database import connect_database
+from bankbuddy.database import initialize_database
 from bankbuddy.cli import main
 from bankbuddy.paths import resolve_app_paths
 
@@ -62,7 +63,10 @@ def test_status_reports_environment_and_data_home(tmp_path) -> None:
     assert result.exit_code == 0
     assert "Environment: dev" in result.output
     assert f"Data home: {tmp_path / 'home'}" in result.output
-    assert f"Database: {tmp_path / 'home' / 'bankbuddy.sqlite3'}" in result.output
+    assert (
+        f"Database: {tmp_path / 'home' / 'database' / 'bankbuddy.sqlite3'}"
+        in result.output
+    )
 
 
 def test_status_environment_option_selects_data_home(monkeypatch, tmp_path) -> None:
@@ -72,7 +76,10 @@ def test_status_environment_option_selects_data_home(monkeypatch, tmp_path) -> N
     assert result.exit_code == 0
     assert "Environment: dev" in result.output
     assert f"Data home: {tmp_path / 'BankBuddy-dev'}" in result.output
-    assert f"Database: {tmp_path / 'BankBuddy-dev' / 'bankbuddy.sqlite3'}" in result.output
+    assert (
+        f"Database: {tmp_path / 'BankBuddy-dev' / 'database' / 'bankbuddy.sqlite3'}"
+        in result.output
+    )
 
 
 def test_status_ignores_base_cli_environment(monkeypatch, tmp_path) -> None:
@@ -98,7 +105,10 @@ def test_status_reports_uninitialized_database(tmp_path) -> None:
     assert result.exit_code == 0
     assert "Environment: prod" in result.output
     assert f"Data home: {tmp_path}" in result.output
-    assert f"Database: {tmp_path / 'bankbuddy.sqlite3'}" in result.output
+    assert (
+        f"Database: {tmp_path / 'database' / 'bankbuddy.sqlite3'}"
+        in result.output
+    )
     assert "Initialized: no" in result.output
 
 
@@ -111,7 +121,28 @@ def test_init_creates_database(tmp_path) -> None:
 
     assert result.exit_code == 0
     assert "Initialized Bank Buddy" in result.output
+    assert (tmp_path / "database" / "bankbuddy.sqlite3").is_file()
+
+
+def test_storage_migrate_layout_dry_run_reports_legacy_plan(tmp_path) -> None:
+    legacy_paths = resolve_app_paths(tmp_path, layout="legacy")
+    initialize_database(legacy_paths)
+
+    result = CliRunner().invoke(
+        main,
+        ["storage", "migrate-layout", "--dry-run"],
+        env={"BANKBUDDY_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0
+    assert "Dry run: yes" in result.output
+    assert "Current layout: legacy" in result.output
+    assert "Target layout: canonical" in result.output
+    assert "Database: bankbuddy.sqlite3 -> database/bankbuddy.sqlite3" in result.output
+    assert "Processed paths to update: 0" in result.output
+    assert "Duplicate paths to update: 0" in result.output
     assert (tmp_path / "bankbuddy.sqlite3").is_file()
+    assert not (tmp_path / "database" / "bankbuddy.sqlite3").exists()
 
 
 def test_account_add_creates_bank_and_account(tmp_path) -> None:

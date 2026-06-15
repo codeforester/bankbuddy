@@ -78,6 +78,9 @@ from bankbuddy.statements import StatementFilterError
 from bankbuddy.statements import StatementListRow
 from bankbuddy.statements import statement_summary
 from bankbuddy.statements import StatementSummaryRow
+from bankbuddy.storage_layout import migrate_storage_layout
+from bankbuddy.storage_layout import StorageLayoutError
+from bankbuddy.storage_layout import StorageLayoutMigrationSummary
 from bankbuddy.transactions import categorize_transaction
 from bankbuddy.transactions import format_minor_units
 from bankbuddy.transactions import list_transactions
@@ -168,6 +171,7 @@ def status(ctx: click.Context) -> None:
     )
 
     click.echo(f"Environment: {paths.environment}")
+    click.echo(f"Storage layout: {paths.layout}")
     click.echo(f"Data home: {paths.root}")
     click.echo(f"Database: {paths.database}")
     click.echo(f"Initialized: {initialized}")
@@ -1581,6 +1585,69 @@ def export_sqlite_command(
     click.echo(
         "Warning: export contains sensitive financial data and actual account numbers."
     )
+
+
+@main.group()
+def storage() -> None:
+    """Manage local BankBuddy storage."""
+
+
+@storage.command("migrate-layout")
+@click.option(
+    "--dry-run/--apply",
+    default=True,
+    help="Preview the migration or apply it. Defaults to dry-run.",
+)
+@click.pass_context
+def storage_migrate_layout_command(ctx: click.Context, dry_run: bool) -> None:
+    """Migrate a legacy app home into the canonical storage layout."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        summary = migrate_storage_layout(paths, dry_run=dry_run)
+    except StorageLayoutError as exc:
+        runtime.log.debug("storage_migrate_layout_failed reason=%s", exc)
+        raise click.ClickException(str(exc)) from exc
+
+    runtime.log.debug(
+        "storage_migrate_layout dry_run=%s layout=%s already_canonical=%s "
+        "processed_paths_to_update=%s duplicate_paths_to_update=%s",
+        summary.dry_run,
+        paths.layout,
+        summary.already_canonical,
+        summary.processed_paths_to_update,
+        summary.duplicate_paths_to_update,
+    )
+    render_storage_layout_migration(summary, current_layout=paths.layout)
+
+
+def render_storage_layout_migration(
+    summary: StorageLayoutMigrationSummary,
+    *,
+    current_layout: str,
+) -> None:
+    """Print a storage layout migration summary."""
+
+    click.echo(f"Dry run: {'yes' if summary.dry_run else 'no'}")
+    click.echo(f"Current layout: {current_layout}")
+    click.echo("Target layout: canonical")
+    if summary.already_canonical:
+        click.echo("Already canonical: yes")
+        return
+
+    if summary.database_move is not None:
+        click.echo(
+            f"Database: {summary.database_move.source} -> "
+            f"{summary.database_move.target}"
+        )
+    else:
+        click.echo("Database: -")
+    for move in summary.directory_moves:
+        click.echo(f"Directory: {move.source} -> {move.target}")
+    click.echo(f"Processed paths to update: {summary.processed_paths_to_update}")
+    click.echo(f"Duplicate paths to update: {summary.duplicate_paths_to_update}")
+    click.echo(f"Changes applied: {'yes' if summary.changes_applied else 'no'}")
 
 
 @main.group()

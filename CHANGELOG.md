@@ -27,6 +27,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bankbuddy storage migrate-layout --dry-run|--apply` for moving legacy
+  app homes into the canonical `database/` and `bank/` storage layout while
+  updating stored archive paths.
 - Documented the planned TaxBuddy layer, including the second `taxbuddy` CLI,
   shared SQLite/database boundary, local-first tax document storage, readiness
   scope, and follow-on implementation issues.
@@ -86,7 +89,7 @@ and versions are tracked in the repo-root `VERSION` file.
   without writing database rows or moving statement files.
 - Added exact duplicate inbox import detection using SHA-256 file hashes, with
   duplicate attempts recorded in history and duplicate source files preserved
-  under the managed `duplicates/` directory.
+  under the managed `bank/duplicates/` directory.
 - Added first-class BankBuddy environments selected by `BANKBUDDY_ENV`, visible
   in `status`, and defaulted to `dev` during Base activation.
 - Added durable failed import attempts and an `import retry` command for
@@ -126,6 +129,10 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Changed
 
+- New BankBuddy homes store SQLite at `database/bankbuddy.sqlite3` and banking
+  statement files under `bank/inbox`, `bank/processed`, `bank/duplicates`, and
+  `bank/exports`, with matching `tax/` folders created for the planned tax
+  document workflow.
 - Rendered `bankbuddy account list` as the standard aligned pretty table while
   continuing to mask account numbers by default.
 - Normalized account bank country values to ISO 3166-1 alpha-2 codes such as

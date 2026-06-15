@@ -51,12 +51,13 @@ def import_archive_relative_path(
     bank_name: str,
     statement_end_date: str,
     canonical_file_name: str,
+    base_dir: Path | str = Path("bank", "processed"),
 ) -> Path:
     """Return the archive path relative to the BankBuddy home directory."""
 
     period_end = date.fromisoformat(statement_end_date)
     return Path(
-        "processed",
+        base_dir,
         slugify_bank_name(bank_name),
         f"{period_end.year:04d}",
         f"{period_end.month:02d}",
@@ -69,12 +70,13 @@ def duplicate_archive_relative_path(
     bank_name: str,
     statement_end_date: str,
     canonical_file_name: str,
+    base_dir: Path | str = Path("bank", "duplicates"),
 ) -> Path:
     """Return the duplicate archive path relative to the BankBuddy home directory."""
 
     period_end = date.fromisoformat(statement_end_date)
     return Path(
-        "duplicates",
+        base_dir,
         slugify_bank_name(bank_name),
         f"{period_end.year:04d}",
         f"{period_end.month:02d}",
@@ -136,6 +138,7 @@ def plan_statement_archive_file(
         bank_name=bank_name,
         statement_end_date=statement_end_date,
         canonical_file_name=canonical_file_name,
+        base_dir=_relative_archive_base(paths, paths.processed),
     )
     destination = paths.root / relative_path
     if destination.exists() and hash_file(destination) != file_hash:
@@ -147,6 +150,7 @@ def plan_statement_archive_file(
             bank_name=bank_name,
             statement_end_date=statement_end_date,
             canonical_file_name=canonical_file_name,
+            base_dir=_relative_archive_base(paths, paths.processed),
         )
         destination = paths.root / relative_path
 
@@ -197,6 +201,7 @@ def plan_duplicate_statement_path(
         bank_name=bank_name,
         statement_end_date=statement_end_date,
         canonical_file_name=canonical_file_name,
+        base_dir=_relative_archive_base(paths, paths.duplicates),
     )
     destination = paths.root / relative_path
     if destination.exists():
@@ -208,6 +213,7 @@ def plan_duplicate_statement_path(
                 bank_name=bank_name,
                 statement_end_date=statement_end_date,
                 canonical_file_name=candidate_name,
+                base_dir=_relative_archive_base(paths, paths.duplicates),
             )
             destination = paths.root / relative_path
             if not destination.exists():
@@ -246,3 +252,9 @@ def hash_file(path: Path) -> str:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _relative_archive_base(paths: AppPaths, archive_root: Path) -> Path:
+    """Return an archive root path relative to the BankBuddy home directory."""
+
+    return archive_root.relative_to(paths.root)

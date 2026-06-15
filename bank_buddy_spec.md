@@ -1,11 +1,15 @@
 # Bank Buddy — Design & Architecture Specification
 
-**Version:** 1.32
+**Version:** 1.33
 **Status:** Draft
 **Purpose:** Personal finance tracking tool for savvy users who want full
 control of their financial data without relying on third-party services.
 
 **Changelog:**
+- v1.33: Added the canonical data-home layout with
+  `database/bankbuddy.sqlite3`, banking files under `bank/`, tax files under
+  `tax/`, legacy layout detection, and `storage migrate-layout` for safe
+  dry-run-first migration.
 - v1.32: Documented the planned TaxBuddy layer as a second `taxbuddy`
   CLI in the same repo and SQLite database. TaxBuddy is scoped to tax
   document indexing, expected-form gap detection, and annual readiness
@@ -71,7 +75,7 @@ control of their financial data without relying on third-party services.
   unchanged.
 - v1.13: Added exact duplicate inbox handling. Files with a SHA-256 hash that
   matches a prior successful import are skipped before parser work, recorded as
-  `duplicate` attempts, and temporarily preserved under `duplicates/`.
+  `duplicate` attempts, and temporarily preserved under `bank/duplicates/`.
 - v1.12: Added first-class BankBuddy environments. `BANKBUDDY_ENV`
   selects the named data environment, `BANKBUDDY_HOME` remains an explicit data
   home override, `status` reports both the environment and data home, and Base
@@ -85,7 +89,7 @@ control of their financial data without relying on third-party services.
   do not provide reliable account metadata.
 - v1.9: Added the first managed inbox processing command,
   `import inbox --account-id`, for importing supported files from
-  `~/BankBuddy/inbox` and removing successful inbox-owned source files after
+  `~/BankBuddy/bank/inbox` and removing successful inbox-owned source files after
   archival.
 - v1.8: Added the SQLite export command with overwrite protection and a
   sensitive-data warning for database backups that include actual account
@@ -94,7 +98,7 @@ control of their financial data without relying on third-party services.
   year and month filters and category/currency grouping for outgoing
   transactions.
 - v1.6: Added canonical imported-statement filenames, import file archive
-  metadata, and a managed `processed/<bank>/<year>/<month>/` copy for
+  metadata, and a managed `bank/processed/<bank>/<year>/<month>/` copy for
   successful explicit imports while leaving source files untouched.
 - v1.5: Added the first import attempt inspection command,
   `import history`, with status and limit filters so processed files and
@@ -197,7 +201,8 @@ focused on the financial domain rather than infrastructure.
 
 BankBuddy environments are local data environments, not source checkouts.
 `BANKBUDDY_HOME` points to the data home that contains the SQLite database and
-managed directories such as `inbox`, `processed`, and `exports`.
+managed directories. New homes use `database/bankbuddy.sqlite3`, bank statement
+folders under `bank/`, and tax document folders under `tax/`.
 
 Environment precedence:
 
@@ -485,7 +490,7 @@ Transfer candidates remain visible until reviewed.
 | `original_file_name` | TEXT | Original imported filename |
 | `canonical_file_name` | TEXT | Parser-derived standard filename |
 | `source_path` | TEXT | Absolute path of the explicit import source |
-| `processed_path` | TEXT | Path relative to `~/BankBuddy/` for archived copy |
+| `processed_path` | TEXT | Path relative to the data home for archived copy, such as `bank/processed/...` |
 | `statement_start_date` | DATE | Inclusive statement period start |
 | `statement_end_date` | DATE | Inclusive statement period end |
 | `account_ref` | TEXT | Parser-confirmed account reference, usually last four |
@@ -562,26 +567,43 @@ types updates the existing budget record.
 
 ```text
 ~/BankBuddy/
-|-- inbox/
-|-- processed/
-|   `-- bank-of-america/
-|       `-- 2026/
-|           `-- 05/
-|               `-- bank-of-america_1145_2026-04-23_2026-05-19.pdf
-|-- duplicates/
-|   `-- bank-of-america/
-|       `-- 2026/
-|           `-- 05/
-|               `-- bank-of-america_1145_2026-04-23_2026-05-19.pdf
-`-- exports/
+|-- database/
+|   `-- bankbuddy.sqlite3
+|-- bank/
+|   |-- inbox/
+|   |-- processed/
+|   |   `-- bank-of-america/
+|   |       `-- 2026/
+|   |           `-- 05/
+|   |               `-- bank-of-america_1145_2026-04-23_2026-05-19.pdf
+|   |-- duplicates/
+|   |   `-- bank-of-america/
+|   |       `-- 2026/
+|   |           `-- 05/
+|   |               `-- bank-of-america_1145_2026-04-23_2026-05-19.pdf
+|   `-- exports/
+`-- tax/
+    |-- inbox/
+    |-- processed/
+    |-- duplicates/
+    `-- exports/
 ```
 
-Phase 1 imports an explicit `--file` path. Phase 2 adds `inbox/` scanning and
+BankBuddy should detect old data homes that still have root-level
+`bankbuddy.sqlite3`, `inbox/`, `processed/`, `duplicates/`, or `exports/`, then
+operate in legacy mode until the user runs `storage migrate-layout`. Migration
+must be dry-run-first, refuse overwrite scenarios, move the database to
+`database/bankbuddy.sqlite3`, move banking folders under `bank/`, and update
+stored `processed_path` and `duplicate_path` values. Historical `source_path`
+values remain unchanged because they describe where the user originally
+imported a file from.
+
+Phase 1 imports an explicit `--file` path. Phase 2 adds `bank/inbox/` scanning and
 removes successfully imported inbox-owned source files after archival. Exact
 duplicates of prior successful imports are detected by SHA-256 hash before
-parser work, recorded as `duplicate` attempts, and moved to `duplicates/` as a
-temporary conservative preservation policy. Import routing must be based on
-content extracted from the file, never the source filename. Bank of America
+parser work, recorded as `duplicate` attempts, and moved to `bank/duplicates/`
+as a temporary conservative preservation policy. Import routing must be based
+on content extracted from the file, never the source filename. Bank of America
 PDFs, Apple Card PDFs, ICICI `.xls` files, and HDFC `.xls` files can be
 auto-routed by parser-detected account identity when it maps to exactly one
 configured account. `account_statement_refs` extends that identity model to
@@ -599,16 +621,16 @@ processed files, duplicate files, or remove inbox files.
 
 ### 6.2 Import Process
 
-1. Import the explicit `--file` path, or scan visible files in `inbox/` with
+1. Import the explicit `--file` path, or scan visible files in `bank/inbox/` with
    `import inbox`. Use `import inbox --account-id ACCOUNT_ID` when a supported
    format cannot infer the account safely, such as current BOA CSV files. Add
    `--dry-run` to either mode to preview the plan without durable changes.
 2. Compute SHA-256 hash of the file.
 3. For inbox imports, if the hash matches an `import_files` row with
    `last_success_at`, skip parser work, preserve the source file under
-   `duplicates/<bank-slug>/<year>/<month>/`, record a `duplicate` attempt with
-   `duplicate_path`, and remove the file from `inbox/`. In dry-run mode, report
-   the planned duplicate path but do not copy, record, or remove the file.
+   `bank/duplicates/<bank-slug>/<year>/<month>/`, record a `duplicate` attempt with
+   `duplicate_path`, and remove the file from `bank/inbox/`. In dry-run mode,
+   report the planned duplicate path but do not copy, record, or remove the file.
 4. Detect file type.
 5. Infer bank, account reference, and statement period from parser-specific
    signals. PDF imports first detect the statement format from document
@@ -625,7 +647,7 @@ processed files, duplicate files, or remove inbox files.
    `--account-id` was supplied, treat it as an assertion: when the document
    exposes an account identity that maps to a different account, fail cleanly.
 8. Copy the successfully recognized source file to the managed archive using
-   the canonical filename and `processed/<bank-slug>/<year>/<month>/`
+   the canonical filename and `bank/processed/<bank-slug>/<year>/<month>/`
    hierarchy. Explicit source files are left untouched; successful inbox-owned
    source files are removed after the archive copy exists.
 9. Create or update the `import_files` row with original filename, canonical
@@ -705,6 +727,10 @@ uv run pytest
 ```text
 bankbuddy init                         # Create local app directories and DB
 bankbuddy status                       # Show DB path, tx count, date range
+bankbuddy storage migrate-layout --dry-run
+                                        # Preview legacy-to-canonical storage move
+bankbuddy storage migrate-layout --apply
+                                        # Move legacy storage after reviewing plan
 ```
 
 ### Import Commands
@@ -1054,7 +1080,13 @@ default to a `tax/` subtree under the active data home:
 
 ```text
 ~/BankBuddy/
-|-- bankbuddy.sqlite3
+|-- database/
+|   `-- bankbuddy.sqlite3
+|-- bank/
+|   |-- inbox/
+|   |-- processed/
+|   |-- duplicates/
+|   `-- exports/
 |-- tax/
 |   |-- inbox/
 |   |-- processed/
