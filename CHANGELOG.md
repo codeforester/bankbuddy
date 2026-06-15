@@ -23,6 +23,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added concrete examples to `bankbuddy account ref add --help` for Apple Card
+  product refs, last-four statement suffix refs, and full account number refs.
 - Added `bankbuddy account show --show-full-account-number` for explicit
   one-account inspection of the stored actual account number.
 - Added `account_statement_refs` and `bankbuddy account ref` commands for

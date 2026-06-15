@@ -49,7 +49,7 @@ bankbuddy account ref add --account-id 1 --type last4 --value 1145
 bankbuddy account ref add \
   --account-id 1 \
   --type product \
-  --value apple-card \
+  --value "Apple Card" \
   --source-format apple_card_pdf
 bankbuddy account ref list
 bankbuddy import --dry-run --file path/to/boa.pdf --account-id 1
