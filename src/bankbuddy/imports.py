@@ -16,6 +16,7 @@ import sqlite3
 from bankbuddy.account_refs import AccountStatementRefError
 from bankbuddy.account_refs import StatementAccountRef
 from bankbuddy.account_refs import resolve_statement_account_ref
+from bankbuddy.account_refs import resolve_statement_account_ref_for_currency
 from bankbuddy.account_refs import statement_refs_for_account_number
 from bankbuddy.currency import parse_amount
 from bankbuddy.database import connect_database, initialize_database
@@ -143,6 +144,26 @@ BOA_STATEMENT_PERIOD_PATTERNS = (
     BOA_ACCOUNT_HEADER_PERIOD_PATTERN,
     BOA_COMBINED_STATEMENT_PERIOD_PATTERN,
     BOA_LEGACY_ACCOUNT_HEADER_PERIOD_PATTERN,
+)
+APPLE_CARD_BANK_NAME = "Apple Card"
+APPLE_CARD_SOURCE_FORMAT = "apple_card_pdf"
+APPLE_CARD_STATEMENT_PERIOD_PATTERN = re.compile(
+    r"\b(?P<start_month>[A-Za-z]+)\s+"
+    r"(?P<start_day>\d{1,2})\s+"
+    r"(?:\u2014|-)\s+"
+    r"(?:(?P<end_month>[A-Za-z]+)\s+)?"
+    r"(?P<end_day>\d{1,2}),\s+"
+    r"(?P<year>\d{4})\b"
+)
+APPLE_CARD_DATE_LINE_PATTERN = re.compile(
+    r"^\s*(?P<date>\d{1,2}/\d{1,2}/\d{4})\s+(?P<rest>.+?)\s*$"
+)
+APPLE_CARD_CASHBACK_SUFFIX_PATTERN = re.compile(
+    r"\s+\d+(?:\.\d+)?%\s+-?\$?\d[\d,]*\.\d{2}$"
+)
+APPLE_CARD_TOTAL_BALANCE_PATTERN = re.compile(
+    r"\bTotal\s+Balance\s+(?P<amount>-?\$?\d[\d,]*\.\d{2})",
+    re.IGNORECASE,
 )
 ICICI_BANK_NAME = "ICICI Bank"
 ICICI_SOURCE_FORMAT = "icici_xls"
@@ -561,7 +582,7 @@ def parse_hdfc_xls_rows(rows: Sequence[Sequence[object]]) -> ParsedStatement:
 def parse_boa_pdf_text(text: str) -> list[ParsedTransaction]:
     """Parse extracted Bank of America PDF text into normalized staged rows."""
 
-    if "bank of america" not in text.lower():
+    if not looks_like_boa_pdf(text):
         raise ImportFailure("PDF does not look like a Bank of America statement.")
 
     statement_year = extract_statement_year(text)
@@ -630,6 +651,174 @@ def parse_boa_pdf_text(text: str) -> list[ParsedTransaction]:
     if not parsed_rows:
         raise ImportFailure("Bank of America PDF has no parseable transactions.")
     return parsed_rows
+
+
+def looks_like_boa_pdf(text: str) -> bool:
+    """Return whether PDF text contains the Bank of America statement signature."""
+
+    return "bank of america" in text.lower()
+
+
+def parse_apple_card_pdf_text(text: str) -> ParsedStatement:
+    """Parse extracted Apple Card PDF text into a normalized statement."""
+
+    if not looks_like_apple_card_pdf(text):
+        raise ImportFailure("PDF does not look like an Apple Card statement.")
+
+    statement_start_date, statement_end_date = extract_apple_card_statement_period(
+        text
+    )
+    parsed_rows = parse_apple_card_pdf_transactions(text)
+    latest_balance = extract_apple_card_total_balance(text)
+    return ParsedStatement(
+        bank_name=APPLE_CARD_BANK_NAME,
+        account_number="",
+        currency="USD",
+        statement_start_date=statement_start_date,
+        statement_end_date=statement_end_date,
+        transactions=parsed_rows,
+        latest_balance_minor_units=latest_balance,
+        latest_balance_as_of_date=statement_end_date
+        if latest_balance is not None
+        else None,
+        statement_refs=(
+            StatementAccountRef(
+                ref_type="product",
+                ref_value="Apple Card",
+            ),
+        ),
+    )
+
+
+def looks_like_apple_card_pdf(text: str) -> bool:
+    """Return whether PDF text contains the Apple Card statement signature."""
+
+    normalized = text.lower()
+    return (
+        "apple card" in normalized
+        and "goldman sachs bank usa" in normalized
+    )
+
+
+def parse_apple_card_pdf_transactions(text: str) -> list[ParsedTransaction]:
+    """Parse Apple Card payment and charge rows from extracted PDF text."""
+
+    parsed_rows: list[ParsedTransaction] = []
+    section: str | None = None
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped == "Payments":
+            section = "payments"
+            continue
+        if stripped == "Transactions":
+            section = "transactions"
+            continue
+        if stripped in {"Daily Cash", "Interest Charged", "Fees"}:
+            section = None
+            continue
+        if section not in {"payments", "transactions"}:
+            continue
+
+        match = APPLE_CARD_DATE_LINE_PATTERN.match(stripped)
+        if match is None:
+            continue
+        parsed_row = parse_apple_card_pdf_row(
+            match.group("date"),
+            match.group("rest"),
+            section=section,
+            line_number=line_number,
+        )
+        if parsed_row is not None:
+            parsed_rows.append(parsed_row)
+
+    return parsed_rows
+
+
+def parse_apple_card_pdf_row(
+    row_date: str,
+    rest: str,
+    *,
+    section: str,
+    line_number: int,
+) -> ParsedTransaction | None:
+    """Parse one Apple Card payment or transaction table row."""
+
+    amount_matches = list(PDF_MONEY_PATTERN.finditer(rest))
+    if not amount_matches:
+        return None
+    amount_match = amount_matches[-1]
+    description = rest[: amount_match.start()].strip()
+    if section == "transactions":
+        description = APPLE_CARD_CASHBACK_SUFFIX_PATTERN.sub("", description).strip()
+    if not description or set(description) <= {"-", "\u2014", " "}:
+        return None
+
+    statement_amount = parse_amount(clean_pdf_amount(amount_match.group()), "USD")
+    amount_minor_units = -statement_amount.minor_units
+    return ParsedTransaction(
+        transaction_date=parse_boa_date(row_date),
+        amount_minor_units=amount_minor_units,
+        description=description,
+        normalized_description=normalize_description(description),
+        check_number=None,
+        source_row_key=str(line_number),
+    )
+
+
+def extract_apple_card_statement_period(text: str) -> tuple[str, str]:
+    """Return the statement period from Apple Card PDF text."""
+
+    match = APPLE_CARD_STATEMENT_PERIOD_PATTERN.search(text)
+    if match is None:
+        raise ImportFailure("Apple Card PDF is missing a statement period.")
+
+    year = int(match.group("year"))
+    start_month = match.group("start_month")
+    end_month = match.group("end_month") or start_month
+    start_date = parse_statement_header_date(
+        f"{start_month} {match.group('start_day')}, {year}"
+    )
+    end_date = parse_statement_header_date(
+        f"{end_month} {match.group('end_day')}, {year}"
+    )
+    return start_date.isoformat(), end_date.isoformat()
+
+
+def extract_apple_card_total_balance(text: str) -> int | None:
+    """Return the statement total balance, if present."""
+
+    match = APPLE_CARD_TOTAL_BALANCE_PATTERN.search(text)
+    if match is None:
+        return None
+    return parse_amount(clean_pdf_amount(match.group("amount")), "USD").minor_units
+
+
+def parse_pdf_statement_text(text: str) -> tuple[ParsedStatement, str]:
+    """Parse a supported PDF statement from already extracted text."""
+
+    errors: list[str] = []
+    parsers = (
+        (APPLE_CARD_SOURCE_FORMAT, parse_apple_card_pdf_text),
+    )
+    for source_format, parser in parsers:
+        try:
+            return parser(text), source_format
+        except ImportFailure as exc:
+            errors.append(f"{source_format}: {exc}")
+
+    detail = "; ".join(errors) if errors else "no supported parsers were available"
+    raise ImportFailure(f"PDF could not be parsed by supported parsers: {detail}")
+
+
+def parse_pdf_statement(
+    pdf_path: Path,
+    *,
+    extracted_text: str | None = None,
+) -> tuple[ParsedStatement, str]:
+    """Parse a supported PDF statement."""
+
+    text = extracted_text if extracted_text is not None else extract_pdf_text(pdf_path)
+    return parse_pdf_statement_text(text)
 
 
 def extract_boa_pdf_account_number(text: str) -> str:
@@ -1198,6 +1387,97 @@ def import_xls_statement(
         raise
 
 
+def import_pdf_statement(
+    paths: AppPaths,
+    pdf_path: Path,
+    *,
+    account_id: int,
+    extracted_text: str | None = None,
+    logger: logging.Logger | None = None,
+) -> ImportSummary:
+    """Import a supported PDF statement for a configured account."""
+
+    initialize_database(paths)
+    source_format = "pdf"
+    log_debug(logger, "source_format=pdf parse_start file_name=%s", pdf_path.name)
+    try:
+        parsed_statement, source_format = parse_pdf_statement(
+            pdf_path,
+            extracted_text=extracted_text,
+        )
+        log_debug(
+            logger,
+            "source_format=%s rows_parsed=%s",
+            source_format,
+            len(parsed_statement.transactions),
+        )
+        return import_parsed_statement(
+            paths,
+            pdf_path,
+            account_id=account_id,
+            parsed_statement=parsed_statement,
+            source_format=source_format,
+            import_label="PDF",
+            logger=logger,
+        )
+    except ImportFailure as exc:
+        record_failed_import(
+            paths,
+            pdf_path,
+            source_format=source_format,
+            error_message=str(exc),
+            account_id=account_id,
+        )
+        raise
+
+
+def import_supported_pdf(
+    paths: AppPaths,
+    pdf_path: Path,
+    *,
+    account_id: int,
+    logger: logging.Logger | None = None,
+) -> ImportSummary:
+    """Import a supported PDF statement by detecting its content format."""
+
+    try:
+        text = extract_pdf_text(pdf_path)
+    except ImportFailure as exc:
+        record_failed_import(
+            paths,
+            pdf_path,
+            source_format="pdf",
+            error_message=str(exc),
+            account_id=account_id,
+        )
+        raise
+    if looks_like_apple_card_pdf(text):
+        return import_pdf_statement(
+            paths,
+            pdf_path,
+            account_id=account_id,
+            extracted_text=text,
+            logger=logger,
+        )
+    if looks_like_boa_pdf(text):
+        return import_boa_pdf(
+            paths,
+            pdf_path,
+            account_id=account_id,
+            extracted_text=text,
+            logger=logger,
+        )
+    message = "Unsupported PDF statement format."
+    record_failed_import(
+        paths,
+        pdf_path,
+        source_format="pdf",
+        error_message=message,
+        account_id=account_id,
+    )
+    raise ImportFailure(message)
+
+
 def plan_boa_csv_import(
     paths: AppPaths,
     csv_path: Path,
@@ -1329,6 +1609,68 @@ def plan_xls_statement_import(
         import_label="XLS",
         logger=logger,
     )
+
+
+def plan_pdf_statement_import(
+    paths: AppPaths,
+    pdf_path: Path,
+    *,
+    account_id: int,
+    extracted_text: str | None = None,
+    logger: logging.Logger | None = None,
+) -> ImportPlan:
+    """Plan a supported PDF import without writing data or copying files."""
+
+    initialize_database(paths)
+    log_debug(logger, "source_format=pdf dry_run_parse_start file_name=%s", pdf_path.name)
+    parsed_statement, source_format = parse_pdf_statement(
+        pdf_path,
+        extracted_text=extracted_text,
+    )
+    log_debug(
+        logger,
+        "source_format=%s dry_run_rows_parsed=%s",
+        source_format,
+        len(parsed_statement.transactions),
+    )
+    return plan_parsed_statement_import(
+        paths,
+        pdf_path,
+        account_id=account_id,
+        parsed_statement=parsed_statement,
+        source_format=source_format,
+        import_label="PDF",
+        logger=logger,
+    )
+
+
+def plan_supported_pdf_import(
+    paths: AppPaths,
+    pdf_path: Path,
+    *,
+    account_id: int,
+    logger: logging.Logger | None = None,
+) -> ImportPlan:
+    """Plan a supported PDF import by detecting its content format."""
+
+    text = extract_pdf_text(pdf_path)
+    if looks_like_apple_card_pdf(text):
+        return plan_pdf_statement_import(
+            paths,
+            pdf_path,
+            account_id=account_id,
+            extracted_text=text,
+            logger=logger,
+        )
+    if looks_like_boa_pdf(text):
+        return plan_boa_pdf_import(
+            paths,
+            pdf_path,
+            account_id=account_id,
+            extracted_text=text,
+            logger=logger,
+        )
+    raise ImportFailure("Unsupported PDF statement format.")
 
 
 def plan_boa_transactions(
@@ -1825,21 +2167,28 @@ def validate_parsed_statement_account(
         account_number_suffix(statement_account_number),
     )
     if (
-        account["bank_name"] != parsed_statement.bank_name
-        or account["currency"] != parsed_statement.currency
+        account["currency"] != parsed_statement.currency
     ):
         raise ImportFailure(
             f"{parsed_statement.bank_name} {import_label} import requires a "
-            f"{parsed_statement.bank_name} {parsed_statement.currency} account."
+            f"{parsed_statement.currency} account."
         )
+    statement_refs = parsed_statement_refs(parsed_statement)
     try:
         matched_ref = resolve_statement_account_ref(
             conn,
             bank_name=parsed_statement.bank_name,
             currency=parsed_statement.currency,
             source_format=source_format,
-            statement_refs=parsed_statement_refs(parsed_statement),
+            statement_refs=statement_refs,
         )
+        if matched_ref is None:
+            matched_ref = resolve_statement_account_ref_for_currency(
+                conn,
+                currency=parsed_statement.currency,
+                source_format=source_format,
+                statement_refs=statement_refs,
+            )
     except AccountStatementRefError as exc:
         raise ImportFailure(str(exc)) from exc
 
@@ -1858,6 +2207,12 @@ def validate_parsed_statement_account(
             matched_ref.ref_type,
         )
         return
+
+    if account["bank_name"] != parsed_statement.bank_name:
+        raise ImportFailure(
+            f"{parsed_statement.bank_name} {import_label} import requires a "
+            f"{parsed_statement.bank_name} {parsed_statement.currency} account."
+        )
 
     if statement_account_number and configured_account_number != statement_account_number:
         raise ImportFailure(
@@ -1938,6 +2293,13 @@ def resolve_statement_account_id(
                 source_format=source_format,
                 statement_refs=tuple(refs),
             )
+            if matched_ref is None:
+                matched_ref = resolve_statement_account_ref_for_currency(
+                    conn,
+                    currency=currency,
+                    source_format=source_format,
+                    statement_refs=tuple(refs),
+                )
         except AccountStatementRefError as exc:
             raise ImportFailure(str(exc)) from exc
         if matched_ref is not None:
@@ -2217,7 +2579,7 @@ def transaction_hash(parsed: ParsedTransaction, *, source_format: str = "boa_csv
     ]
     if source_format in {ICICI_SOURCE_FORMAT, HDFC_SOURCE_FORMAT}:
         parts.insert(2, parsed.value_date or "")
-    if source_format in {"boa_pdf", ICICI_SOURCE_FORMAT}:
+    if source_format in {"boa_pdf", APPLE_CARD_SOURCE_FORMAT, ICICI_SOURCE_FORMAT}:
         parts.append(parsed.source_row_key)
     return sha256("|".join(parts).encode("utf-8")).hexdigest()
 

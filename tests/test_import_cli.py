@@ -21,6 +21,25 @@ Date Description Amount Balance
 06/11 PAYROLL 2,500.00 2,600.00
 """
 
+APPLE_CARD_PDF_TEXT = """
+Statement
+Apple Card Customer
+Example Person, example@example.com Aug 1 \u2014 Aug 31, 2025
+Total Balance $2,474.63
+as of Aug 31, 2025
+Apple Card is issued by Goldman Sachs Bank USA, Salt Lake City Branch.
+Payments
+Date Description Amount
+08/31/2025 ACH Deposit Internet transfer from account ending in 1145 -$2,479.77
+Total payments for this period -$2,479.77
+Transactions
+Date Description Daily Cash Amount
+08/01/2025 APPLE.COM/BILL ONE APPLE PARK WAY 3% $0.30 $9.99
+08/03/2025 REFUND MERCHANT 1% $0.10 -$5.00
+Total charges, credits and returns $4.99
+Daily Cash
+"""
+
 ICICI_XLS_ROWS = [
     ["ICICI Bank"],
     ["Statement for Account Number", "1234 5678 9012"],
@@ -1087,6 +1106,101 @@ def test_import_file_command_routes_pdf_imports(tmp_path, monkeypatch) -> None:
     assert "File: boa.pdf" in import_result.output
     assert "Rows parsed: 2" in import_result.output
     assert "Rows imported: 2" in import_result.output
+
+
+def test_import_file_command_routes_apple_card_pdf_imports(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    pdf_path = tmp_path / "apple.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 synthetic fixture placeholder")
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(tmp_path / "home")}
+    monkeypatch.setattr(
+        "bankbuddy.imports.extract_pdf_text",
+        lambda _path: APPLE_CARD_PDF_TEXT,
+    )
+
+    add_result = runner.invoke(
+        main,
+        [
+            "account",
+            "add",
+            "--bank",
+            "Apple GS",
+            "--country",
+            "US",
+            "--account-number",
+            "111122220932",
+            "--type",
+            "credit_card",
+            "--currency",
+            "USD",
+        ],
+        env=env,
+    )
+    ref_result = runner.invoke(
+        main,
+        [
+            "account",
+            "ref",
+            "add",
+            "--account-id",
+            "1",
+            "--type",
+            "product",
+            "--value",
+            "Apple Card",
+            "--source-format",
+            "apple_card_pdf",
+        ],
+        env=env,
+    )
+    import_result = runner.invoke(
+        main,
+        ["import", "--file", str(pdf_path), "--account-id", "1"],
+        env=env,
+    )
+
+    assert add_result.exit_code == 0
+    assert ref_result.exit_code == 0
+    assert import_result.exit_code == 0
+    assert "File: apple.pdf" in import_result.output
+    assert "Bank: Apple Card | Account ID: 1" in import_result.output
+    assert "Rows parsed: 3" in import_result.output
+    assert "Rows imported: 3" in import_result.output
+    with connect_database(resolve_app_paths(tmp_path / "home")) as conn:
+        rows = conn.execute(
+            """
+            select
+                transaction_date,
+                amount_minor_units,
+                currency,
+                description
+            from transactions
+            order by transaction_id
+            """
+        ).fetchall()
+    assert [dict(row) for row in rows] == [
+        {
+            "transaction_date": "2025-08-31",
+            "amount_minor_units": 247977,
+            "currency": "USD",
+            "description": "ACH Deposit Internet transfer from account ending in 1145",
+        },
+        {
+            "transaction_date": "2025-08-01",
+            "amount_minor_units": -999,
+            "currency": "USD",
+            "description": "APPLE.COM/BILL ONE APPLE PARK WAY",
+        },
+        {
+            "transaction_date": "2025-08-03",
+            "amount_minor_units": 500,
+            "currency": "USD",
+            "description": "REFUND MERCHANT",
+        },
+    ]
 
 
 def test_pdf_import_debug_log_omits_full_account_number(tmp_path, monkeypatch) -> None:

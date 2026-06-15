@@ -166,51 +166,107 @@ def import_inbox(
                     )
             elif suffix == ".pdf":
                 resolved_account_id = account_id
-                extracted_text: str | None = None
-                if resolved_account_id is None:
-                    extracted_text = statement_imports.extract_pdf_text(inbox_file)
-                    pdf_account_number = statement_imports.extract_boa_pdf_account_number(
-                        extracted_text
-                    )
-                    resolved_account_id = account_id_for_boa_pdf_account_number(
-                        paths,
-                        pdf_account_number,
+                extracted_text = statement_imports.extract_pdf_text(inbox_file)
+                if statement_imports.looks_like_apple_card_pdf(extracted_text):
+                    parsed_statement, source_format = statement_imports.parse_pdf_statement(
+                        inbox_file,
+                        extracted_text=extracted_text,
                     )
                     if resolved_account_id is None:
-                        account_suffix = statement_imports.account_number_suffix(
-                            pdf_account_number
+                        resolved_account_id = account_id_for_parsed_statement(
+                            paths,
+                            parsed_statement,
+                            source_format=source_format,
                         )
-                        message = (
-                            "No configured account matches Bank of America PDF "
-                            f"account ending {account_suffix}."
-                        )
-                        if not dry_run:
-                            statement_imports.record_failed_import(
-                                paths,
-                                inbox_file,
-                                source_format="boa_pdf",
-                                error_message=message,
+                        if resolved_account_id is None:
+                            message = (
+                                "No configured account matches Apple Card PDF "
+                                "statement references."
                             )
-                        raise ImportFailure(
-                            message
-                        )
+                            if not dry_run:
+                                statement_imports.record_failed_import(
+                                    paths,
+                                    inbox_file,
+                                    source_format=source_format,
+                                    error_message=message,
+                                )
+                            raise ImportFailure(message)
 
-                if dry_run:
-                    import_result = statement_imports.plan_boa_pdf_import(
-                        paths,
-                        inbox_file,
-                        account_id=resolved_account_id,
-                        extracted_text=extracted_text,
-                        logger=logger,
-                    )
+                    if dry_run:
+                        import_result = statement_imports.plan_parsed_statement_import(
+                            paths,
+                            inbox_file,
+                            account_id=resolved_account_id,
+                            parsed_statement=parsed_statement,
+                            source_format=source_format,
+                            import_label="PDF",
+                            logger=logger,
+                        )
+                    else:
+                        import_result = statement_imports.import_parsed_statement(
+                            paths,
+                            inbox_file,
+                            account_id=resolved_account_id,
+                            parsed_statement=parsed_statement,
+                            source_format=source_format,
+                            import_label="PDF",
+                            logger=logger,
+                        )
+                elif statement_imports.looks_like_boa_pdf(extracted_text):
+                    if resolved_account_id is None:
+                        pdf_account_number = statement_imports.extract_boa_pdf_account_number(
+                            extracted_text
+                        )
+                        resolved_account_id = account_id_for_boa_pdf_account_number(
+                            paths,
+                            pdf_account_number,
+                        )
+                        if resolved_account_id is None:
+                            account_suffix = statement_imports.account_number_suffix(
+                                pdf_account_number
+                            )
+                            message = (
+                                "No configured account matches Bank of America PDF "
+                                f"account ending {account_suffix}."
+                            )
+                            if not dry_run:
+                                statement_imports.record_failed_import(
+                                    paths,
+                                    inbox_file,
+                                    source_format="boa_pdf",
+                                    error_message=message,
+                                )
+                            raise ImportFailure(
+                                message
+                            )
+
+                    if dry_run:
+                        import_result = statement_imports.plan_boa_pdf_import(
+                            paths,
+                            inbox_file,
+                            account_id=resolved_account_id,
+                            extracted_text=extracted_text,
+                            logger=logger,
+                        )
+                    else:
+                        import_result = statement_imports.import_boa_pdf(
+                            paths,
+                            inbox_file,
+                            account_id=resolved_account_id,
+                            extracted_text=extracted_text,
+                            logger=logger,
+                        )
                 else:
-                    import_result = statement_imports.import_boa_pdf(
-                        paths,
-                        inbox_file,
-                        account_id=resolved_account_id,
-                        extracted_text=extracted_text,
-                        logger=logger,
-                    )
+                    message = "Unsupported PDF statement format."
+                    if not dry_run:
+                        statement_imports.record_failed_import(
+                            paths,
+                            inbox_file,
+                            source_format="pdf",
+                            error_message=message,
+                            account_id=resolved_account_id,
+                        )
+                    raise ImportFailure(message)
             else:
                 parsed_statement, source_format = statement_imports.parse_xls_statement(
                     inbox_file

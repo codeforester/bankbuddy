@@ -23,6 +23,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added Apple Card PDF imports with content-based PDF routing, product-ref
+  account matching, credit-card sign normalization, zero-activity statement
+  support, and latest statement balance snapshots.
 - Added concrete examples to `bankbuddy account ref add --help` for Apple Card
   product refs, last-four statement suffix refs, and full account number refs.
 - Added `bankbuddy account show --show-full-account-number` for explicit

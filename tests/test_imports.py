@@ -35,6 +35,45 @@ Date Description Amount Balance
 06/11 PAYROLL 2,500.00 2,600.00
 """
 
+APPLE_CARD_PDF_TEXT = """
+Statement
+Apple Card Customer
+Example Person, example@example.com Aug 1 \u2014 Aug 31, 2025
+Total Balance $2,474.63
+as of Aug 31, 2025
+Apple Card is issued by Goldman Sachs Bank USA, Salt Lake City Branch.
+Payments
+Payments made by Example Person
+Date Description Amount
+08/31/2025 ACH Deposit Internet transfer from account ending in 1145 -$2,479.77
+Total payments for this period -$2,479.77
+Transactions
+Transactions by Example Person
+Date Description Daily Cash Amount
+08/01/2025 APPLE.COM/BILL ONE APPLE PARK WAY 3% $0.30 $9.99
+08/03/2025 REFUND MERCHANT 1% $0.10 -$5.00
+Total charges, credits and returns $4.99
+Daily Cash
+"""
+
+APPLE_CARD_ZERO_ACTIVITY_PDF_TEXT = """
+Statement
+Apple Card Customer
+Example Person, example@example.com Mar 1 \u2014 Mar 31, 2021
+Total Balance $0.00
+as of Mar 31, 2021
+Apple Card is issued by Goldman Sachs Bank USA, Salt Lake City Branch.
+Payments
+Date Description Amount
+\u2014 \u2014 $0.00
+Total payments for this period $0.00
+Transactions
+Date Description Daily Cash Amount
+\u2014 \u2014 0% $0.00 $0.00
+Total Daily Cash this month $0.00
+Total charges, credits and returns $0.00
+"""
+
 ICICI_XLS_ROWS = [
     ["ICICI Bank"],
     ["Statement for Account Number", "1234 5678 9012"],
@@ -526,6 +565,48 @@ def test_parse_boa_pdf_text_normalizes_transactions() -> None:
     assert rows[1].transaction_date == "2026-06-11"
     assert rows[1].description == "PAYROLL"
     assert rows[1].amount_minor_units == 250000
+
+
+def test_parse_apple_card_pdf_text_normalizes_statement_and_rows() -> None:
+    statement = imports.parse_apple_card_pdf_text(APPLE_CARD_PDF_TEXT)
+
+    assert statement.bank_name == "Apple Card"
+    assert statement.account_number == ""
+    assert statement.currency == "USD"
+    assert statement.statement_start_date == "2025-08-01"
+    assert statement.statement_end_date == "2025-08-31"
+    assert statement.latest_balance_minor_units == 247463
+    assert statement.latest_balance_as_of_date == "2025-08-31"
+    assert statement.statement_refs == (
+        imports.StatementAccountRef(ref_type="product", ref_value="Apple Card"),
+    )
+    assert [
+        (
+            row.transaction_date,
+            row.description,
+            row.amount_minor_units,
+            row.source_row_key,
+        )
+        for row in statement.transactions
+    ] == [
+        (
+            "2025-08-31",
+            "ACH Deposit Internet transfer from account ending in 1145",
+            247977,
+            "11",
+        ),
+        ("2025-08-01", "APPLE.COM/BILL ONE APPLE PARK WAY", -999, "16"),
+        ("2025-08-03", "REFUND MERCHANT", 500, "17"),
+    ]
+
+
+def test_parse_apple_card_pdf_text_allows_zero_activity_statement() -> None:
+    statement = imports.parse_apple_card_pdf_text(APPLE_CARD_ZERO_ACTIVITY_PDF_TEXT)
+
+    assert statement.statement_start_date == "2021-03-01"
+    assert statement.statement_end_date == "2021-03-31"
+    assert statement.latest_balance_minor_units == 0
+    assert statement.transactions == []
 
 
 def test_parse_boa_pdf_text_accepts_two_digit_years() -> None:
@@ -1024,3 +1105,59 @@ def test_import_parsed_statement_rejects_explicit_account_id_mapped_to_other_ref
         transaction_count = conn.execute("select count(*) from transactions").fetchone()[0]
 
     assert transaction_count == 0
+
+
+def test_import_parsed_statement_allows_product_ref_to_match_user_bank_label(
+    tmp_path,
+) -> None:
+    from bankbuddy.account_refs import add_account_statement_ref
+
+    paths = resolve_app_paths(tmp_path / "home")
+    account = add_account(
+        paths,
+        bank_name="Apple GS",
+        country="US",
+        account_number="111122220932",
+        account_type="credit_card",
+        currency="USD",
+    )
+    add_account_statement_ref(
+        paths,
+        account_id=account.account_id,
+        ref_type="product",
+        ref_value="Apple Card",
+        source_format="apple_card_pdf",
+    )
+    source_path = tmp_path / "apple.pdf"
+    source_path.write_bytes(b"%PDF synthetic fixture placeholder")
+    statement = imports.parse_apple_card_pdf_text(APPLE_CARD_PDF_TEXT)
+
+    summary = imports.import_parsed_statement(
+        paths,
+        source_path,
+        account_id=account.account_id,
+        parsed_statement=statement,
+        source_format="apple_card_pdf",
+        import_label="PDF",
+    )
+
+    assert summary.account_id == account.account_id
+    assert summary.rows_imported == 3
+    with connect_database(paths) as conn:
+        file_row = conn.execute(
+            """
+            select
+                banks.bank_name,
+                import_files.source_format,
+                import_files.processed_path
+            from import_files
+            join banks using (bank_id)
+            """
+        ).fetchone()
+    assert dict(file_row) == {
+        "bank_name": "Apple GS",
+        "source_format": "apple_card_pdf",
+        "processed_path": (
+            "processed/apple-gs/2025/08/apple-gs_0932_2025-08-01_2025-08-31.pdf"
+        ),
+    }

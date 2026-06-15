@@ -310,6 +310,62 @@ def resolve_statement_account_ref(
     return next(iter(matches.values()))
 
 
+def resolve_statement_account_ref_for_currency(
+    conn: sqlite3.Connection,
+    *,
+    currency: str,
+    source_format: str,
+    statement_refs: tuple[StatementAccountRef, ...],
+) -> AccountRefMatch | None:
+    """Resolve statement refs without requiring a parser bank-name match."""
+
+    matches: dict[int, AccountRefMatch] = {}
+    for statement_ref in statement_refs:
+        normalized_type = normalize_ref_type(statement_ref.ref_type)
+        normalized_value = normalize_statement_ref_value(
+            normalized_type,
+            statement_ref.ref_value,
+        )
+        for account_id in account_ids_for_configured_ref_currency(
+            conn,
+            currency=currency,
+            source_format=source_format,
+            ref_type=normalized_type,
+            normalized_ref_value=normalized_value,
+        ):
+            matches.setdefault(
+                account_id,
+                AccountRefMatch(
+                    account_id=account_id,
+                    ref_type=normalized_type,
+                    normalized_ref_value=normalized_value,
+                ),
+            )
+        if normalized_type == "full_account_number":
+            for account_id in account_ids_for_full_account_number_currency(
+                conn,
+                currency=currency,
+                normalized_ref_value=normalized_value,
+            ):
+                matches.setdefault(
+                    account_id,
+                    AccountRefMatch(
+                        account_id=account_id,
+                        ref_type=normalized_type,
+                        normalized_ref_value=normalized_value,
+                    ),
+                )
+
+    if not matches:
+        return None
+    if len(matches) > 1:
+        account_ids = ", ".join(str(account_id) for account_id in sorted(matches))
+        raise AccountStatementRefAmbiguousError(
+            f"Statement references map to multiple accounts: {account_ids}."
+        )
+    return next(iter(matches.values()))
+
+
 def account_ids_for_configured_ref(
     conn: sqlite3.Connection,
     *,
@@ -347,6 +403,39 @@ def account_ids_for_configured_ref(
     return [int(row["account_id"]) for row in rows]
 
 
+def account_ids_for_configured_ref_currency(
+    conn: sqlite3.Connection,
+    *,
+    currency: str,
+    source_format: str,
+    ref_type: str,
+    normalized_ref_value: str,
+) -> list[int]:
+    """Return accounts with matching configured statement refs for a currency."""
+
+    normalized_source = normalize_source_format(source_format)
+    rows = conn.execute(
+        """
+        select distinct accounts.account_id
+        from account_statement_refs
+        join accounts using (account_id)
+        where accounts.currency = ?
+          and account_statement_refs.ref_type = ?
+          and account_statement_refs.normalized_ref_value = ?
+          and account_statement_refs.source_format in (?, ?)
+        order by accounts.account_id
+        """,
+        (
+            currency,
+            ref_type,
+            normalized_ref_value,
+            normalized_source,
+            SOURCE_FORMAT_ANY,
+        ),
+    ).fetchall()
+    return [int(row["account_id"]) for row in rows]
+
+
 def account_ids_for_full_account_number(
     conn: sqlite3.Connection,
     *,
@@ -366,6 +455,30 @@ def account_ids_for_full_account_number(
         order by accounts.account_id
         """,
         (bank_name, currency),
+    ).fetchall()
+    return [
+        int(row["account_id"])
+        for row in rows
+        if normalize_digits(row["account_number"]) == normalized_ref_value
+    ]
+
+
+def account_ids_for_full_account_number_currency(
+    conn: sqlite3.Connection,
+    *,
+    currency: str,
+    normalized_ref_value: str,
+) -> list[int]:
+    """Return accounts in a currency whose stored account number matches."""
+
+    rows = conn.execute(
+        """
+        select accounts.account_id, accounts.account_number
+        from accounts
+        where accounts.currency = ?
+        order by accounts.account_id
+        """,
+        (currency,),
     ).fetchall()
     return [
         int(row["account_id"])
