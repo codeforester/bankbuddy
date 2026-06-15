@@ -7,6 +7,11 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ## [Unreleased]
 
+### Changed
+
+- Relicensed new BankBuddy versions from MIT to GNU Affero General Public
+  License v3.0 or later.
+
 ### Fixed
 
 - Added a dry-run-first repair command for historical Bank of America PDF

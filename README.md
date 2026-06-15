@@ -2,6 +2,17 @@
 
 Local-first personal finance tracking.
 
+## License
+
+Copyright (C) 2026 Ramesh Padmanabhaiah.
+
+BankBuddy is licensed under the GNU Affero General Public License v3.0 or
+later. See [LICENSE](LICENSE).
+
+Previous versions released under the MIT License remain available under MIT as
+licensed at the time. New versions from this relicensing change forward are
+licensed under AGPL v3.
+
 ## Development
 
 Install project tools through Base:
