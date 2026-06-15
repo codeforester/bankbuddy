@@ -41,6 +41,22 @@ Also run narrower tests for the files changed when available.
 Update docs when behavior, commands, setup, or workflow expectations change.
 Update `CHANGELOG.md` only for notable user-visible or release-worthy changes.
 
+## AI Context Maintenance
+
+Treat `.ai-context/` as the AI-facing orientation layer for BankBuddy and
+TaxBuddy. Update it when a change affects the product shape, architecture,
+command surface, workflows, Base manifest contract, storage model, privacy
+rules, release status, or durable design decisions.
+
+Usually leave `.ai-context/` unchanged for typo-only edits, formatting-only
+edits, test-only changes with no product behavior impact, or internal refactors
+that do not change public behavior or architecture.
+
+Keep `.ai-context/` safe to share with other AI tools: no secrets, API keys,
+tokens, real account numbers, raw statement contents, private local paths, or
+personal notes. Canonical docs and code remain the source of truth; update
+`.ai-context/` when it drifts.
+
 ## Finish
 
 After merge, sync main, remove the worktree, and delete merged local

@@ -21,5 +21,6 @@ Closes #
 - [ ] Pull request body explains what changed and how it was validated.
 - [ ] Relevant project checks pass.
 - [ ] Documentation is updated when behavior or user-facing commands change.
+- [ ] AI context is updated in `.ai-context/`, or the PR body explains why it is not applicable.
 - [ ] CHANGELOG is updated for notable user-visible or release-worthy changes.
 - [ ] Pull request includes `Fixes #<issue>` or `Closes #<issue>` when merge should close the issue.
