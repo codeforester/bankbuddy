@@ -39,8 +39,17 @@ The following decisions define the current v2 direction:
   foundation, while allowing details to evolve during implementation.
 - Introduce the v2 foundation schema additively beside the existing legacy
   tables. Do not silently discard existing tables or data.
+- Keep v2 documents in a separate `financial/` storage namespace so early v2
+  work does not mix with the existing `bank/` and `tax/` trees.
 - Move imported documents into managed storage when an import activity finishes,
   whether the import succeeds or fails.
+- Treat `financial/canonical` as the authoritative document-object store and
+  `financial/views` as generated human-readable copies for transparency.
+- Store canonical/view path metadata in `BB_STORAGE_ROOT`,
+  `BB_DOCUMENT_OBJECT`, and `BB_DOCUMENT_VIEW`. Other v2 domain tables should
+  reference document/object rows rather than storing filesystem paths.
+- Do not use symlinks or hardlinks as the default human-view mechanism. Views
+  are copies that can be reconciled, repaired, or regenerated.
 - Treat future `infer` work as read-only with respect to source documents unless
   a later design explicitly says otherwise.
 - Pause TaxBuddy issue #100 until the v2 document/entity/observation model
@@ -262,10 +271,11 @@ W-2, Form 26AS, AIS, mortgage statement, property tax bill, insurance policy.
 
 Documents should track:
 
-- original filename/path;
-- canonical filename/path when copied into managed storage;
+- original filename;
 - SHA-256 hash;
 - MIME/file type;
+- authoritative storage object metadata;
+- generated human-readable view metadata;
 - document type;
 - source institution when known;
 - jurisdiction;
@@ -342,6 +352,8 @@ Conceptual ER:
 
 ```text
 BB_DOCUMENT
+  -> BB_DOCUMENT_OBJECT
+  -> BB_DOCUMENT_VIEW
   -> BB_IMPORT_ATTEMPT
   -> BB_EXTRACTION_RUN
   -> BB_OBSERVATION
@@ -414,16 +426,54 @@ BB_DOCUMENT(
     document_id,
     file_hash,
     original_file_name,
-    original_path,
     canonical_file_name,
-    canonical_path,
+    source_uri,
     document_type,
-    file_type,
     jurisdiction_code,
-    period_start,
-    period_end,
     tax_year,
+    document_status,
+    created_at,
+    updated_at
+)
+
+BB_STORAGE_ROOT(
+    storage_root_id,
+    storage_root_code,
+    root_kind,
+    base_path_key,
+    relative_root,
+    permissions_mode,
+    active,
+    created_at,
+    updated_at
+)
+
+BB_DOCUMENT_OBJECT(
+    document_object_id,
+    document_id,
+    storage_root_id,
+    object_key,
+    object_role,
+    content_hash,
+    byte_size,
+    media_type,
+    original_file_name,
+    created_at,
+    updated_at
+)
+
+BB_DOCUMENT_VIEW(
+    document_view_id,
+    document_id,
+    document_object_id,
+    storage_root_id,
+    view_name,
+    view_key,
+    materialization_kind,
+    expected_hash,
+    byte_size,
     status,
+    last_materialized_at,
     created_at,
     updated_at
 )
@@ -431,7 +481,7 @@ BB_DOCUMENT(
 BB_IMPORT_ATTEMPT(
     import_attempt_id,
     document_id,
-    source_path,
+    document_object_id,
     import_status,
     started_at,
     finished_at,
@@ -750,6 +800,12 @@ Create indexes alongside the v2 schema rather than as an afterthought:
 BB_DOCUMENT(file_hash)
 BB_DOCUMENT(document_type, tax_year)
 BB_DOCUMENT(jurisdiction_code, tax_year)
+BB_STORAGE_ROOT(root_kind, active)
+BB_DOCUMENT_OBJECT(document_id, object_role)
+BB_DOCUMENT_OBJECT(content_hash)
+BB_DOCUMENT_VIEW(document_id)
+BB_DOCUMENT_VIEW(document_object_id)
+BB_DOCUMENT_VIEW(status)
 BB_IMPORT_ATTEMPT(document_id, import_status)
 BB_ENTITY(entity_type, status)
 BB_ENTITY_ATTRIBUTE(entity_id, entity_attribute_type_id)
@@ -792,7 +848,9 @@ Responsibilities:
 - hash files;
 - identify duplicates;
 - create document records;
-- plan/copy canonical storage;
+- plan/copy canonical storage objects;
+- materialize human-readable document views;
+- reconcile missing or modified generated views against canonical objects;
 - list/show documents;
 - record import attempts.
 - move completed import inputs into managed storage for both successful and

@@ -24,6 +24,7 @@ EXPECTED_MIGRATION_VERSIONS = [
     "0008_account_statement_refs",
     "0009_tax_documents",
     "0010_financial_intelligence_foundation",
+    "0011_financial_document_storage",
 ]
 
 
@@ -35,6 +36,9 @@ def test_initialize_database_creates_directories_and_schema_table(tmp_path) -> N
     assert paths.inbox.is_dir()
     assert paths.processed.is_dir()
     assert paths.exports.is_dir()
+    assert paths.financial_canonical.is_dir()
+    assert paths.financial_views.is_dir()
+    assert paths.financial_inbox.is_dir()
     assert paths.database.is_file()
 
     with sqlite3.connect(paths.database) as conn:
@@ -82,6 +86,9 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "budgets",
         "account_statement_refs",
         "tax_documents",
+        "BB_STORAGE_ROOT",
+        "BB_DOCUMENT_OBJECT",
+        "BB_DOCUMENT_VIEW",
     }.issubset(table_names)
     assert migration_versions == EXPECTED_MIGRATION_VERSIONS
     assert categories == {
@@ -326,7 +333,7 @@ def test_tax_documents_schema_tracks_imported_document_metadata(tmp_path) -> Non
         "imported_at": "TEXT",
     }.items() <= columns.items()
     assert "0009_tax_documents" in migration_versions
-    assert migration_versions[-1] == "0010_financial_intelligence_foundation"
+    assert migration_versions[-1] == "0011_financial_document_storage"
     assert dict(row) == {
         "document_type": "1099-INT",
         "jurisdiction": "US",

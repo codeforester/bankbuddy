@@ -32,6 +32,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added v2 financial document storage roots, document object metadata,
+  generated human-readable document view metadata, path-resolution helpers,
+  and read-only managed-file guardrails under the `financial/` namespace.
 - Added additive financial intelligence v2 foundation tables, seed type
   dictionaries, indexes, and DAO-based read/write helpers without dropping
   existing banking or tax tables.

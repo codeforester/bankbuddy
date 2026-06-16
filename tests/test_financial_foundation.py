@@ -102,10 +102,6 @@ def test_financial_dao_round_trips_records_without_inline_sql_callers(
                 file_hash="a" * 64,
                 original_file_name="statement.pdf",
                 canonical_file_name="bank_1234_2026-01-01_2026-01-31.pdf",
-                storage_path=(
-                    "bank/processed/bank/2026/01/"
-                    "bank_1234_2026-01-01_2026-01-31.pdf"
-                ),
                 document_type="bank_statement",
                 jurisdiction_code="US",
                 tax_year=2026,

@@ -44,6 +44,16 @@ as account identity.
 Imports, repairs, and storage-layout migration expose dry-run paths so parser,
 duplicate, archive, and migration decisions can be reviewed before writes.
 
+## V2 Canonical Storage And Human Views
+
+The financial-intelligence v2 model stores authoritative document objects under
+`financial/canonical` and exposes user-friendly generated copies under
+`financial/views`. The database centralizes path metadata in storage roots,
+document objects, and document views; domain facts reference document/object
+rows instead of embedding filesystem paths. Human views are copies by default,
+not symlinks or hardlinks, so they can be rebuilt, reconciled, and repaired
+without making user-browsable folders the heart of the system.
+
 ## Mask Sensitive Account Details
 
 Full account numbers can be stored for validation and exact matching, but
