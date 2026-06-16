@@ -11,7 +11,10 @@
 
 BankBuddy should evolve into the broader personal financial intelligence
 platform described in the product vision, while remaining in the existing
-BankBuddy repository and keeping the `bankbuddy` CLI name.
+BankBuddy repository and keeping BankBuddy as the product name. New v2 work
+should start behind the shorter `bb` CLI and the `bankbuddy.bb` source
+namespace so the existing `bankbuddy` and `taxbuddy` commands can keep working
+while the new model matures.
 
 The right target architecture is not a banking app with more tables. It is a
 local-first evidence graph:
@@ -34,7 +37,12 @@ need to be discarded just to make room for the new architecture.
 
 The following decisions define the current v2 direction:
 
-- Keep the product and CLI name as `bankbuddy`.
+- Keep the product name as BankBuddy.
+- Introduce `bb` as the side-by-side v2 CLI for financial intelligence
+  workflows. Keep the existing `bankbuddy` and `taxbuddy` commands intact until
+  the v2 command surface is stable enough for cleanup.
+- Put new v2 source files under `bankbuddy.bb` so new DAOs, domain records, and
+  CLI commands do not collide with legacy banking modules.
 - Use `Document`, `Entity`, `Observation`, and `Relationship` as the conceptual
   foundation, while allowing details to evolve during implementation.
 - Introduce the v2 foundation schema additively beside the existing legacy
@@ -942,6 +950,19 @@ This service is new and should be a first-class workflow, not an afterthought.
 
 ## 8. Proposed Package and Module Structure
 
+Near-term v2 code should live in a side-by-side namespace:
+
+```text
+src/bankbuddy/
+  bb/
+    cli.py
+    dao.py
+    records.py
+```
+
+This namespace is intentionally small at first. It gives v2 work a clean home
+without forcing a broad package refactor before the model is proven.
+
 Target structure:
 
 ```text
@@ -1035,49 +1056,51 @@ This can be reached gradually. Do not move everything in one PR.
 
 ## 9. Proposed CLI Evolution
 
-The CLI should remain `bankbuddy` until the platform shape is stable. Separate
-`taxbuddy` can remain temporarily, but the long-term command model should be
-one platform CLI with domain groups.
+The v2 command surface should start as `bb` while the legacy `bankbuddy` and
+`taxbuddy` CLIs remain available. This lets the new document/entity/observation
+model evolve without breaking the working banking and tax-document commands.
+After the v2 surface is stable, cleanup can decide whether `bb` becomes the
+only command or whether `bankbuddy` is kept as an alias.
 
 Target command families:
 
 ```text
-bankbuddy status
-bankbuddy init
+bb status
+bb init
 
-bankbuddy documents import FILE
-bankbuddy documents inbox --dry-run
-bankbuddy documents list
-bankbuddy documents show DOCUMENT_ID
+bb documents import FILE
+bb documents inbox --dry-run
+bb documents list
+bb documents show DOCUMENT_ID
 
-bankbuddy inspect documents --year YEAR
-bankbuddy inspect gaps --year YEAR
-bankbuddy inspect accounts --years 2024,2025
-bankbuddy inspect review
+bb inspect documents --year YEAR
+bb inspect gaps --year YEAR
+bb inspect accounts --years 2024,2025
+bb inspect review
 
-bankbuddy review observations
-bankbuddy review accept OBSERVATION_ID
-bankbuddy review reject OBSERVATION_ID
+bb review observations
+bb review accept OBSERVATION_ID
+bb review reject OBSERVATION_ID
 
-bankbuddy entities list
-bankbuddy entities show ENTITY_ID
+bb entities list
+bb entities show ENTITY_ID
 
-bankbuddy accounts list
-bankbuddy tx list
-bankbuddy report spending
-bankbuddy report net-worth
+bb accounts list
+bb tx list
+bb report spending
+bb report net-worth
 
-bankbuddy tax sources
-bankbuddy tax gaps --year YEAR
-bankbuddy tax summary --year YEAR
+bb tax sources
+bb tax gaps --year YEAR
+bb tax summary --year YEAR
 ```
 
 Potential later commands, only after the infer design is clarified:
 
 ```text
-bankbuddy infer document DOCUMENT_ID
-bankbuddy infer year YEAR
-bankbuddy infer compare --years 2024,2025
+bb infer document DOCUMENT_ID
+bb infer year YEAR
+bb infer compare --years 2024,2025
 ```
 
 Existing `bankbuddy import`, `bankbuddy tx`, `bankbuddy report`, and
@@ -1194,8 +1217,8 @@ Validation:
 
 Build:
 
-- `bankbuddy documents import`;
-- `bankbuddy documents inbox --dry-run`;
+- `bb documents import`;
+- `bb documents inbox --dry-run`;
 - document listing/show commands;
 - generic duplicate detection;
 - managed document archive paths;
@@ -1334,7 +1357,9 @@ CLI output, and defer durable text indexing until encryption is designed.
 
 Resolved decisions:
 
-1. Keep the user-facing product and CLI name as `BankBuddy` / `bankbuddy`.
+1. Keep the user-facing product name as BankBuddy, introduce `bb` as the
+   side-by-side v2 CLI, and keep `bankbuddy` / `taxbuddy` intact during the
+   transition.
 2. Use `Document/Entity/Observation/Relationship` as the foundation, with
    details refined during implementation.
 3. Introduce the v2 foundation schema additively beside existing legacy tables.

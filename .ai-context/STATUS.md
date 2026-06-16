@@ -14,6 +14,8 @@ section is `Unreleased`.
 - Local data homes for `prod`, `dev`, and named environments.
 - Banking CLI commands for banks, accounts, statement refs, imports,
   transactions, categories, reports, exports, storage migration, and status.
+- Side-by-side `bb` CLI for v2 financial intelligence foundation status and
+  `BB_` schema visibility.
 - Supported banking imports for Bank of America PDF/CSV, Apple Card PDF, ICICI
   `.xls`, and HDFC `.xls`.
 - Statement inventory and statement coverage auditing.
@@ -26,6 +28,8 @@ section is `Unreleased`.
   while moving the target model toward documents, entities, observations, and
   relationships. Active design docs are the vision, architecture, and open
   questions documents.
+- Additive `bankbuddy.bb` source namespace and `bb` console script for v2 work,
+  leaving existing `bankbuddy` and `taxbuddy` commands in place.
 - Prospective relicensing from MIT to AGPL-3.0-or-later.
 - Canonical data-home layout with `database/`, `bank/`, and `tax/` directories.
 - First TaxBuddy CLI slice and `tax_documents` metadata index.

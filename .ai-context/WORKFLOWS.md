@@ -33,6 +33,7 @@ The Base dogfood validation path is:
 ```bash
 basectl setup bankbuddy
 basectl test bankbuddy
+basectl run bankbuddy bb -- status
 basectl run bankbuddy bankbuddy -- status
 basectl run bankbuddy taxbuddy -- status
 ```

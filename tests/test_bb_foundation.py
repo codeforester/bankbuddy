@@ -1,6 +1,6 @@
 from bankbuddy.database import connect_database, initialize_database
-from bankbuddy.financial.dao import FinancialIntelligenceDAO
-from bankbuddy.financial.records import (
+from bankbuddy.bb.dao import FinancialIntelligenceDAO
+from bankbuddy.bb.records import (
     DocumentCreate,
     EntityAttributeCreate,
     EntityCreate,
@@ -10,7 +10,7 @@ from bankbuddy.financial.records import (
 from bankbuddy.paths import resolve_app_paths
 
 
-def test_financial_foundation_schema_is_additive_and_seeded(tmp_path) -> None:
+def test_bb_foundation_schema_is_additive_and_seeded(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path)
 
     initialize_database(paths)
