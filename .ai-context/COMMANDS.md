@@ -38,7 +38,9 @@ bb status
 bb documents import --dry-run --file path/to/document.pdf
 bb documents import --file path/to/document.pdf
 bb documents list
+bb documents list --type bank_statement --jurisdiction US --tax-year 2025
 bb documents show 1
+bb documents update 1 --type bank_statement --jurisdiction US --tax-year 2025
 ```
 
 `bb` is the side-by-side command surface for new `BB_` schema work. It should
@@ -49,6 +51,8 @@ prepare v2 `financial/` storage roots for the active data home.
 document/object metadata, and copies the canonical object into managed storage.
 Use `bb documents list` and `bb documents show DOCUMENT_ID` to inspect imported
 v2 documents without opening SQLite directly.
+Use `bb documents update DOCUMENT_ID` to set document metadata. `bb documents
+list` supports metadata filters for type, jurisdiction, tax year, and status.
 
 ## BankBuddy CLI
 

@@ -32,6 +32,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bb documents update DOCUMENT_ID` for v2 document metadata edits and
+  metadata filters on `bb documents list`.
 - Added `bb documents list` and `bb documents show DOCUMENT_ID` for read-only
   inspection of generic v2 document records and canonical object metadata.
 - Added `bb documents import --dry-run --file ...` and

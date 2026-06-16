@@ -72,6 +72,26 @@ class DocumentRecord(DocumentCreate):
 
 
 @dataclass(frozen=True)
+class DocumentListFilter:
+    """Optional filters for listing v2 documents."""
+
+    document_type: str | None = None
+    jurisdiction_code: str | None = None
+    tax_year: int | None = None
+    document_status: str | None = None
+
+
+@dataclass(frozen=True)
+class DocumentMetadataUpdate:
+    """Optional metadata changes for one v2 document."""
+
+    document_type: str | None = None
+    jurisdiction_code: str | None = None
+    tax_year: int | None = None
+    document_status: str | None = None
+
+
+@dataclass(frozen=True)
 class StorageRootRecord:
     """A configured v2 document storage root."""
 

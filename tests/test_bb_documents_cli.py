@@ -134,15 +134,199 @@ def test_bb_documents_list_outputs_imported_documents(tmp_path) -> None:
     result = runner.invoke(main, ["documents", "list"], env=env)
 
     assert result.exit_code == 0
-    assert "ID | File          | Status | Size | Media Type      | SHA-256" in (
-        result.output
+    assert (
+        "ID | File          | Type | Jurisdiction | Tax Year | Status | Size | "
+        "Media Type      | SHA-256"
+    ) in result.output
+    assert (
+        f" 1 | statement.pdf | -    | -            |        - | active |   20 | "
+        f"application/pdf | {first_hash[:12]}"
+    ) in result.output
+    assert (
+        f" 2 | letter.txt    | -    | -            |        - | active |   19 | "
+        f"text/plain      | {second_hash[:12]}"
+    ) in result.output
+
+
+def test_bb_documents_update_sets_metadata_and_show_reflects_it(tmp_path) -> None:
+    home = tmp_path / "home"
+    source = tmp_path / "statement.pdf"
+    source.write_bytes(b"%PDF-1.4 placeholder")
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(main, ["documents", "import", "--file", str(source)], env=env)
+
+    result = runner.invoke(
+        main,
+        [
+            "documents",
+            "update",
+            "1",
+            "--type",
+            "bank_statement",
+            "--jurisdiction",
+            "us",
+            "--tax-year",
+            "2025",
+            "--status",
+            "archived",
+        ],
+        env=env,
     )
-    assert f" 1 | statement.pdf | active |   20 | application/pdf | {first_hash[:12]}" in (
-        result.output
+
+    assert result.exit_code == 0
+    assert "Document ID: 1" in result.output
+    assert "Type: bank_statement" in result.output
+    assert "Jurisdiction: US" in result.output
+    assert "Tax year: 2025" in result.output
+    assert "Status: archived" in result.output
+
+    show = runner.invoke(main, ["documents", "show", "1"], env=env)
+    assert show.exit_code == 0
+    assert "Type: bank_statement" in show.output
+    assert "Jurisdiction: US" in show.output
+    assert "Tax year: 2025" in show.output
+    assert "Status: archived" in show.output
+
+    with connect_database(resolve_app_paths(home)) as conn:
+        document = conn.execute(
+            """
+            select document_type, jurisdiction_code, tax_year, document_status
+            from BB_DOCUMENT
+            where document_id = 1
+            """
+        ).fetchone()
+
+    assert document["document_type"] == "bank_statement"
+    assert document["jurisdiction_code"] == "US"
+    assert document["tax_year"] == 2025
+    assert document["document_status"] == "archived"
+
+
+def test_bb_documents_list_filters_by_metadata(tmp_path) -> None:
+    home = tmp_path / "home"
+    first_source = tmp_path / "statement.pdf"
+    second_source = tmp_path / "tax.pdf"
+    first_source.write_bytes(b"%PDF-1.4 statement")
+    second_source.write_bytes(b"%PDF-1.4 tax")
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(main, ["documents", "import", "--file", str(first_source)], env=env)
+    runner.invoke(main, ["documents", "import", "--file", str(second_source)], env=env)
+    runner.invoke(
+        main,
+        [
+            "documents",
+            "update",
+            "1",
+            "--type",
+            "bank_statement",
+            "--jurisdiction",
+            "US",
+            "--tax-year",
+            "2025",
+        ],
+        env=env,
     )
-    assert f" 2 | letter.txt    | active |   19 | text/plain      | {second_hash[:12]}" in (
-        result.output
+    runner.invoke(
+        main,
+        [
+            "documents",
+            "update",
+            "2",
+            "--type",
+            "tax_document",
+            "--jurisdiction",
+            "IN",
+            "--tax-year",
+            "2024",
+            "--status",
+            "archived",
+        ],
+        env=env,
     )
+
+    result = runner.invoke(
+        main,
+        [
+            "documents",
+            "list",
+            "--type",
+            "bank_statement",
+            "--jurisdiction",
+            "us",
+            "--tax-year",
+            "2025",
+            "--status",
+            "active",
+        ],
+        env=env,
+    )
+
+    assert result.exit_code == 0
+    assert "statement.pdf" in result.output
+    assert "bank_statement" in result.output
+    assert "US" in result.output
+    assert "2025" in result.output
+    assert "tax.pdf" not in result.output
+    assert "tax_document" not in result.output
+
+
+def test_bb_documents_update_requires_metadata_options(tmp_path) -> None:
+    home = tmp_path / "home"
+    source = tmp_path / "statement.pdf"
+    source.write_bytes(b"%PDF-1.4 placeholder")
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(main, ["documents", "import", "--file", str(source)], env=env)
+
+    result = runner.invoke(main, ["documents", "update", "1"], env=env)
+
+    assert result.exit_code == 1
+    assert "At least one metadata option is required." in result.output
+
+
+def test_bb_documents_update_fails_for_unknown_jurisdiction(tmp_path) -> None:
+    home = tmp_path / "home"
+    source = tmp_path / "statement.pdf"
+    source.write_bytes(b"%PDF-1.4 placeholder")
+    runner = CliRunner()
+    env = {"BANKBUDDY_HOME": str(home)}
+    runner.invoke(main, ["documents", "import", "--file", str(source)], env=env)
+
+    result = runner.invoke(
+        main,
+        [
+            "documents",
+            "update",
+            "1",
+            "--jurisdiction",
+            "zz",
+        ],
+        env=env,
+    )
+
+    assert result.exit_code == 1
+    assert "Unknown jurisdiction code: ZZ" in result.output
+
+
+def test_bb_documents_update_fails_for_missing_document(tmp_path) -> None:
+    home = tmp_path / "home"
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "documents",
+            "update",
+            "999",
+            "--type",
+            "bank_statement",
+        ],
+        env={"BANKBUDDY_HOME": str(home)},
+    )
+
+    assert result.exit_code == 1
+    assert "Document not found: 999" in result.output
 
 
 def test_bb_documents_show_outputs_document_and_object_details(tmp_path) -> None:
