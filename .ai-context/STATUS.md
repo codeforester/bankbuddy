@@ -22,6 +22,9 @@ section is `Unreleased`.
 
 ## Recent Major Changes
 
+- Financial intelligence v2 architecture review, keeping the `bankbuddy` name
+  while moving the target model toward documents, entities, observations, and
+  relationships.
 - Prospective relicensing from MIT to AGPL-3.0-or-later.
 - Canonical data-home layout with `database/`, `bank/`, and `tax/` directories.
 - First TaxBuddy CLI slice and `tax_documents` metadata index.
@@ -34,9 +37,10 @@ section is `Unreleased`.
 
 ## Active Roadmap
 
-The next TaxBuddy area is expected-form gap detection and annual readiness
-summaries. That work introduces persisted inference state and should have a
-small issue-backed design/spec pass before implementation.
+TaxBuddy expected-form gap detection and annual readiness summaries are paused
+until the financial intelligence v2 document/entity/observation foundation
+exists. The next architectural implementation area should be issue-backed v2
+foundation work, not issue #100 as originally scoped.
 
 ## Validation Snapshot
 

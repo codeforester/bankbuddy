@@ -2,6 +2,16 @@
 
 Local-first personal finance tracking.
 
+## Architecture Direction
+
+BankBuddy is evolving from a banking-focused CLI into a local-first personal
+financial intelligence platform. The current direction is documented in:
+
+- [Financial intelligence architecture review](docs/financial_intelligence_architecture_review.md)
+- [Financial intelligence vision](docs/financial_intelligence_vision.md)
+- [Financial intelligence architecture source spec](docs/financial_intelligence_architecture_spec.md)
+- [AssetBuddy design discussion notes](docs/assetbuddy_design.md)
+
 ## Development
 
 Install project tools and synchronize the uv-managed Python environment through

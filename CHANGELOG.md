@@ -30,6 +30,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added the reviewed financial intelligence architecture documents that define
+  BankBuddy's v2 direction around documents, entities, observations,
+  relationships, managed document storage, and native-currency reporting.
 - Added the first `taxbuddy` CLI slice with tax document import, dry-run
   planning, SHA-256 idempotency, canonical `tax/processed/...` archival,
   `tax_documents` metadata indexing, and `taxbuddy docs list/show`.
