@@ -9,12 +9,15 @@ import click
 
 from bankbuddy import __version__
 from bankbuddy.database import initialize_database
+from bankbuddy.bb.documents import DOCUMENT_STATUSES
 from bankbuddy.bb.documents import DocumentImportError
+from bankbuddy.bb.documents import DocumentMetadataError
 from bankbuddy.bb.documents import DocumentSummary
 from bankbuddy.bb.documents import get_document_summary
 from bankbuddy.bb.documents import import_document
 from bankbuddy.bb.documents import list_documents
 from bankbuddy.bb.documents import plan_document_import
+from bankbuddy.bb.documents import update_document_metadata
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.bb.storage import ensure_financial_storage_dirs
 from bankbuddy.runtime import CliRuntime
@@ -173,13 +176,38 @@ def documents() -> None:
 
 
 @documents.command("list")
+@click.option("--type", "document_type", help="Filter by document type.")
+@click.option("--jurisdiction", "jurisdiction_code", help="Filter by jurisdiction code.")
+@click.option(
+    "--tax-year",
+    type=click.IntRange(1000, 9999),
+    help="Filter by four-digit tax year.",
+)
+@click.option(
+    "--status",
+    "document_status",
+    type=click.Choice(DOCUMENT_STATUSES),
+    help="Filter by document status.",
+)
 @click.pass_context
-def documents_list(ctx: click.Context) -> None:
+def documents_list(
+    ctx: click.Context,
+    document_type: str | None,
+    jurisdiction_code: str | None,
+    tax_year: int | None,
+    document_status: str | None,
+) -> None:
     """List imported v2 documents."""
 
     runtime = runtime_from_context(ctx)
     paths = resolve_app_paths(environment=runtime.environment)
-    rows = list_documents(paths)
+    rows = list_documents(
+        paths,
+        document_type=document_type,
+        jurisdiction_code=jurisdiction_code,
+        tax_year=tax_year,
+        document_status=document_status,
+    )
     render_document_table(rows)
 
 
@@ -194,6 +222,51 @@ def documents_show(ctx: click.Context, document_id: int) -> None:
     summary = get_document_summary(paths, document_id)
     if summary is None:
         raise click.ClickException(f"Document not found: {document_id}")
+    render_document_summary(summary)
+
+
+@documents.command("update")
+@click.argument("document_id", type=int)
+@click.option("--type", "document_type", help="Set the document type.")
+@click.option("--jurisdiction", "jurisdiction_code", help="Set the jurisdiction code.")
+@click.option(
+    "--tax-year",
+    type=click.IntRange(1000, 9999),
+    help="Set the four-digit tax year.",
+)
+@click.option(
+    "--status",
+    "document_status",
+    type=click.Choice(DOCUMENT_STATUSES),
+    help="Set the document status.",
+)
+@click.pass_context
+def documents_update(
+    ctx: click.Context,
+    document_id: int,
+    document_type: str | None,
+    jurisdiction_code: str | None,
+    tax_year: int | None,
+    document_status: str | None,
+) -> None:
+    """Update one v2 document's metadata."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        summary = update_document_metadata(
+            paths,
+            document_id,
+            document_type=document_type,
+            jurisdiction_code=jurisdiction_code,
+            tax_year=tax_year,
+            document_status=document_status,
+        )
+    except DocumentMetadataError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if summary is None:
+        raise click.ClickException(f"Document not found: {document_id}")
+
     render_document_summary(summary)
 
 
@@ -265,6 +338,9 @@ def render_document_table(rows: list[DocumentSummary]) -> None:
         [
             str(row.document.document_id),
             row.document.original_file_name,
+            _display_value(row.document.document_type),
+            _display_value(row.document.jurisdiction_code),
+            _display_value(row.document.tax_year),
             row.document.document_status,
             str(row.canonical_object.byte_size)
             if row.canonical_object and row.canonical_object.byte_size is not None
@@ -275,9 +351,19 @@ def render_document_table(rows: list[DocumentSummary]) -> None:
         for row in rows
     ]
     render_pretty_table(
-        ["ID", "File", "Status", "Size", "Media Type", "SHA-256"],
+        [
+            "ID",
+            "File",
+            "Type",
+            "Jurisdiction",
+            "Tax Year",
+            "Status",
+            "Size",
+            "Media Type",
+            "SHA-256",
+        ],
         table,
-        align_right={0, 3},
+        align_right={0, 4, 6},
     )
 
 

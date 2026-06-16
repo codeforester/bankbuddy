@@ -48,7 +48,9 @@ bb status
 bb documents import --dry-run --file path/to/document.pdf
 bb documents import --file path/to/document.pdf
 bb documents list
+bb documents list --type bank_statement --jurisdiction US --tax-year 2025
 bb documents show 1
+bb documents update 1 --type bank_statement --jurisdiction US --tax-year 2025
 bankbuddy --help
 bankbuddy status
 bankbuddy init
@@ -174,6 +176,10 @@ file, records a `BB_DOCUMENT`, stores a canonical object under
 workflows.
 Use `bb documents list` and `bb documents show DOCUMENT_ID` to inspect the
 generic v2 document inventory and canonical object metadata.
+Use `bb documents update DOCUMENT_ID` to classify imported generic documents
+with metadata such as type, jurisdiction, tax year, and status. `bb documents
+list` accepts the same metadata filters so you can inspect a focused document
+set without opening SQLite.
 
 Switch the current shell by exporting `BANKBUDDY_ENV`:
 

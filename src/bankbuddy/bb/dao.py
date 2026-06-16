@@ -6,6 +6,8 @@ import sqlite3
 
 from bankbuddy.bb.records import (
     DocumentCreate,
+    DocumentListFilter,
+    DocumentMetadataUpdate,
     DocumentRecord,
     EntityAttributeCreate,
     EntityAttributeRecord,
@@ -186,11 +188,32 @@ class FinancialIntelligenceDAO:
             return None
         return _document_from_row(row)
 
-    def list_documents(self) -> list[DocumentRecord]:
+    def list_documents(
+        self,
+        filters: DocumentListFilter | None = None,
+    ) -> list[DocumentRecord]:
         """Return v2 documents ordered by id."""
 
+        filters = filters or DocumentListFilter()
+        conditions: list[str] = []
+        params: list[object] = []
+        if filters.document_type is not None:
+            conditions.append("document_type = ?")
+            params.append(filters.document_type)
+        if filters.jurisdiction_code is not None:
+            conditions.append("jurisdiction_code = ?")
+            params.append(filters.jurisdiction_code)
+        if filters.tax_year is not None:
+            conditions.append("tax_year = ?")
+            params.append(filters.tax_year)
+        if filters.document_status is not None:
+            conditions.append("document_status = ?")
+            params.append(filters.document_status)
+        where_clause = ""
+        if conditions:
+            where_clause = "where " + " and ".join(conditions)
         rows = self._conn.execute(
-            """
+            f"""
             select
                 document_id,
                 file_hash,
@@ -202,10 +225,64 @@ class FinancialIntelligenceDAO:
                 tax_year,
                 document_status
             from BB_DOCUMENT
+            {where_clause}
             order by document_id
-            """
+            """,
+            params,
         ).fetchall()
         return [_document_from_row(row) for row in rows]
+
+    def update_document_metadata(
+        self,
+        document_id: int,
+        update: DocumentMetadataUpdate,
+    ) -> DocumentRecord | None:
+        """Update metadata fields on one v2 document."""
+
+        assignments: list[str] = []
+        params: list[object] = []
+        if update.document_type is not None:
+            assignments.append("document_type = ?")
+            params.append(update.document_type)
+        if update.jurisdiction_code is not None:
+            assignments.append("jurisdiction_code = ?")
+            params.append(update.jurisdiction_code)
+        if update.tax_year is not None:
+            assignments.append("tax_year = ?")
+            params.append(update.tax_year)
+        if update.document_status is not None:
+            assignments.append("document_status = ?")
+            params.append(update.document_status)
+        if not assignments:
+            return self.get_document(document_id)
+
+        params.append(document_id)
+        cursor = self._conn.execute(
+            f"""
+            update BB_DOCUMENT
+            set
+                {", ".join(assignments)},
+                updated_at = current_timestamp
+            where document_id = ?
+            """,
+            params,
+        )
+        if cursor.rowcount == 0:
+            return None
+        return self.get_document(document_id)
+
+    def jurisdiction_exists(self, jurisdiction_code: str) -> bool:
+        """Return whether a seeded jurisdiction exists."""
+
+        row = self._conn.execute(
+            """
+            select 1
+            from BB_JURISDICTION
+            where jurisdiction_code = ?
+            """,
+            (jurisdiction_code,),
+        ).fetchone()
+        return row is not None
 
     def create_entity(self, record: EntityCreate) -> EntityRecord:
         """Create a v2 entity row."""
