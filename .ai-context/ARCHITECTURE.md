@@ -12,6 +12,9 @@
   a uv-managed Python project and routes selected project commands through
   Base's `runner: uv` support.
 - `bank_buddy_spec.md` is the broader design and architecture specification.
+- `docs/financial_intelligence_architecture_review.md` is the current v2
+  architecture direction for evolving BankBuddy into a local-first personal
+  financial intelligence platform.
 
 ## Runtime Model
 
@@ -72,3 +75,15 @@ metadata.
 Raw extracted tax document text is not stored durably. Gap detection, expected
 forms, OCR, synced document roots, tax calculations, and filing support are
 future work unless a focused issue says otherwise.
+
+## Financial Intelligence V2 Direction
+
+The accepted v2 direction keeps the product and CLI name as `bankbuddy` while
+moving the long-term architecture toward `Document`, `Entity`, `Observation`,
+and `Relationship` foundations. New schema proposals use `BB_`-prefixed
+singular table names and prefer normalized relational tables over JSON blobs.
+
+TaxBuddy issue #100 is paused until the v2 document/entity/observation model
+exists. Early v2 work should focus on a schema reset path, generic document
+storage/import, provenance, and inspect/report foundations before adding a
+user-facing infer workflow.
