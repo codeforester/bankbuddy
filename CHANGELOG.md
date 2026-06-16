@@ -32,6 +32,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added additive financial intelligence v2 foundation tables, seed type
+  dictionaries, indexes, and DAO-based read/write helpers without dropping
+  existing banking or tax tables.
 - Added the reviewed financial intelligence architecture documents that define
   BankBuddy's v2 direction around documents, entities, observations,
   relationships, managed document storage, and native-currency reporting.

@@ -13,6 +13,20 @@ from bankbuddy.database import (
 from bankbuddy.paths import resolve_app_paths
 
 
+EXPECTED_MIGRATION_VERSIONS = [
+    "0001_core_schema",
+    "0002_import_file_metadata",
+    "0003_import_attempt_account",
+    "0004_duplicate_import_attempts",
+    "0005_account_balances_and_value_dates",
+    "0006_normalize_bank_country_codes",
+    "0007_add_rental_income_category",
+    "0008_account_statement_refs",
+    "0009_tax_documents",
+    "0010_financial_intelligence_foundation",
+]
+
+
 def test_initialize_database_creates_directories_and_schema_table(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path)
 
@@ -69,17 +83,7 @@ def test_initialize_database_applies_core_schema_and_seed_categories(tmp_path) -
         "account_statement_refs",
         "tax_documents",
     }.issubset(table_names)
-    assert migration_versions == [
-        "0001_core_schema",
-        "0002_import_file_metadata",
-        "0003_import_attempt_account",
-        "0004_duplicate_import_attempts",
-        "0005_account_balances_and_value_dates",
-        "0006_normalize_bank_country_codes",
-        "0007_add_rental_income_category",
-        "0008_account_statement_refs",
-        "0009_tax_documents",
-    ]
+    assert migration_versions == EXPECTED_MIGRATION_VERSIONS
     assert categories == {
         "Dining": "expense",
         "Dividends": "income",
@@ -112,7 +116,7 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
         ).fetchone()[0]
         category_count = conn.execute("select count(*) from categories").fetchone()[0]
 
-    assert migration_count == 9
+    assert migration_count == len(EXPECTED_MIGRATION_VERSIONS)
     assert category_count == 16
 
 
@@ -221,17 +225,7 @@ def test_schema_tracks_value_date_and_latest_account_balance(tmp_path) -> None:
     assert account_columns["latest_balance_currency"] == "TEXT"
     assert account_columns["latest_balance_as_of_date"] == "TEXT"
     assert account_columns["latest_balance_source_file_id"] == "INTEGER"
-    assert migration_versions == [
-        "0001_core_schema",
-        "0002_import_file_metadata",
-        "0003_import_attempt_account",
-        "0004_duplicate_import_attempts",
-        "0005_account_balances_and_value_dates",
-        "0006_normalize_bank_country_codes",
-        "0007_add_rental_income_category",
-        "0008_account_statement_refs",
-        "0009_tax_documents",
-    ]
+    assert migration_versions == EXPECTED_MIGRATION_VERSIONS
 
 
 def test_schema_tracks_account_statement_refs(tmp_path) -> None:
@@ -331,7 +325,8 @@ def test_tax_documents_schema_tracks_imported_document_metadata(tmp_path) -> Non
         "account_ref": "TEXT",
         "imported_at": "TEXT",
     }.items() <= columns.items()
-    assert migration_versions[-1] == "0009_tax_documents"
+    assert "0009_tax_documents" in migration_versions
+    assert migration_versions[-1] == "0010_financial_intelligence_foundation"
     assert dict(row) == {
         "document_type": "1099-INT",
         "jurisdiction": "US",
