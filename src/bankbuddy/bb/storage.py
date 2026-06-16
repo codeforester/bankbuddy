@@ -144,6 +144,39 @@ class FinancialStorageDAO:
             return None
         return _document_object_from_row(row)
 
+    def find_canonical_document_object(
+        self,
+        document_id: int,
+    ) -> DocumentObjectRecord | None:
+        """Return the canonical object for a document when one exists."""
+
+        row = self._conn.execute(
+            """
+            select
+                BB_DOCUMENT_OBJECT.document_object_id,
+                BB_DOCUMENT_OBJECT.document_id,
+                BB_STORAGE_ROOT.storage_root_code,
+                BB_DOCUMENT_OBJECT.object_key,
+                BB_DOCUMENT_OBJECT.object_role,
+                BB_DOCUMENT_OBJECT.content_hash,
+                BB_DOCUMENT_OBJECT.byte_size,
+                BB_DOCUMENT_OBJECT.media_type,
+                BB_DOCUMENT_OBJECT.original_file_name,
+                BB_DOCUMENT_OBJECT.storage_root_id
+            from BB_DOCUMENT_OBJECT
+            join BB_STORAGE_ROOT using (storage_root_id)
+            where
+                BB_DOCUMENT_OBJECT.document_id = ?
+                and BB_DOCUMENT_OBJECT.object_role = 'canonical'
+            order by BB_DOCUMENT_OBJECT.document_object_id
+            limit 1
+            """,
+            (document_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return _document_object_from_row(row)
+
     def create_document_view(
         self,
         record: DocumentViewCreate,

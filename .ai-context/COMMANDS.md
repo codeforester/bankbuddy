@@ -37,6 +37,8 @@ bb init
 bb status
 bb documents import --dry-run --file path/to/document.pdf
 bb documents import --file path/to/document.pdf
+bb documents list
+bb documents show 1
 ```
 
 `bb` is the side-by-side command surface for new `BB_` schema work. It should
@@ -45,6 +47,8 @@ surfaces remain available. Use `bb init` to apply current migrations and
 prepare v2 `financial/` storage roots for the active data home.
 `bb documents import` is parser-free: it hashes the explicit file, records v2
 document/object metadata, and copies the canonical object into managed storage.
+Use `bb documents list` and `bb documents show DOCUMENT_ID` to inspect imported
+v2 documents without opening SQLite directly.
 
 ## BankBuddy CLI
 
