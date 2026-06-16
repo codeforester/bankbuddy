@@ -32,6 +32,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bb init` and v2 storage readiness output in `bb status`, so the v2
+  command surface can initialize migrations and financial storage roots
+  independently of the legacy `bankbuddy` CLI.
 - Added v2 financial document storage roots, document object metadata,
   generated human-readable document view metadata, path-resolution helpers,
   and read-only managed-file guardrails under the `bankbuddy.bb` namespace.

@@ -33,12 +33,14 @@ Run the v2 financial intelligence CLI with:
 
 ```bash
 bb --help
+bb init
 bb status
 ```
 
 `bb` is the side-by-side command surface for new `BB_` schema work. It should
 grow new document/entity/observation workflows while the legacy command
-surfaces remain available.
+surfaces remain available. Use `bb init` to apply current migrations and
+prepare v2 `financial/` storage roots for the active data home.
 
 ## BankBuddy CLI
 
