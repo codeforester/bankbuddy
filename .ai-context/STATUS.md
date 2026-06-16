@@ -7,7 +7,8 @@ section is `Unreleased`.
 
 ## Current Product Capabilities
 
-- Base-managed setup, activation, and validation.
+- Base-managed setup, activation, and validation for a uv-managed Python
+  project.
 - Base-managed GitHub Project intake fallback for externally created issues.
 - Local SQLite initialization and ordered migrations.
 - Local data homes for `prod`, `dev`, and named environments.

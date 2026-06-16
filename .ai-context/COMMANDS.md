@@ -9,12 +9,19 @@ basectl setup bankbuddy
 basectl check bankbuddy
 basectl doctor bankbuddy
 basectl test bankbuddy
+basectl run bankbuddy bankbuddy -- status
+basectl run bankbuddy taxbuddy -- status
 basectl activate bankbuddy
 basectl gh issue create --category enhancement --title "..."
 uv sync
 uv run pytest
 ./tests/validate.sh
 ```
+
+`base_manifest.yaml` declares `python.manager: uv`, so `basectl setup
+bankbuddy` delegates to `uv sync`, `basectl activate bankbuddy` uses the
+project-local `.venv`, and manifest-declared `test` / `run` commands can opt
+into `uv run` through `runner: uv`.
 
 `basectl activate bankbuddy` enters a project shell and sources
 `.base/activate.sh`, which defaults `BANKBUDDY_ENV=dev` when unset.

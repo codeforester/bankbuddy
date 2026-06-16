@@ -4,17 +4,30 @@ Local-first personal finance tracking.
 
 ## Development
 
-Install project tools through Base:
+Install project tools and synchronize the uv-managed Python environment through
+Base:
 
 ```bash
 basectl setup bankbuddy
 ```
 
-Set up the Python environment with `uv`:
+Validate through the Base manifest contract:
 
 ```bash
-uv sync
+basectl test bankbuddy
 ```
+
+Run uv-backed project commands through Base when you want one-command dispatch:
+
+```bash
+basectl run bankbuddy bankbuddy -- status
+basectl run bankbuddy taxbuddy -- status
+```
+
+You can still run `uv sync` or `uv run pytest` directly when debugging the
+Python environment. The Base manifest declares `python.manager: uv`, so
+`basectl setup bankbuddy` delegates to `uv sync` and activation uses the
+project-local `.venv`.
 
 Activate the project shell once, then run the CLI directly:
 

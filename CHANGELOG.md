@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Changed
 
+- Declared BankBuddy as a uv-managed Base project and routed Base test/run
+  commands through Base's uv runner contract.
 - Moved the README license notice out of the opening project summary.
 - Relicensed bankbuddy prospectively from MIT to AGPL-3.0-or-later.
 
