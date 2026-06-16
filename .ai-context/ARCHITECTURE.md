@@ -8,7 +8,9 @@
 - `src/bankbuddy/tax/` contains the TaxBuddy document-readiness slice.
 - `src/bankbuddy/migrations/` contains ordered SQL migrations.
 - `tests/` contains pytest coverage and `tests/validate.sh`.
-- `base_manifest.yaml` is the Base project contract.
+- `base_manifest.yaml` is the Base project contract. It declares BankBuddy as
+  a uv-managed Python project and routes selected project commands through
+  Base's `runner: uv` support.
 - `bank_buddy_spec.md` is the broader design and architecture specification.
 
 ## Runtime Model

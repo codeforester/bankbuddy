@@ -5,9 +5,24 @@ project:
 
 brewfile: Brewfile
 
+python:
+  manager: uv
+
 activate:
   source:
     - .base/activate.sh
 
 test:
   command: ./tests/validate.sh
+  runner: uv
+
+commands:
+  bankbuddy:
+    command: bankbuddy
+    runner: uv
+  taxbuddy:
+    command: taxbuddy
+    runner: uv
+  pytest:
+    command: pytest
+    runner: uv

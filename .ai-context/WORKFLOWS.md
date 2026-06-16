@@ -28,6 +28,15 @@ The project validation command is:
 ./tests/validate.sh
 ```
 
+The Base dogfood validation path is:
+
+```bash
+basectl setup bankbuddy
+basectl test bankbuddy
+basectl run bankbuddy bankbuddy -- status
+basectl run bankbuddy taxbuddy -- status
+```
+
 Useful narrower checks include:
 
 ```bash

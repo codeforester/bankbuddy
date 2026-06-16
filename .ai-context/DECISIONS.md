@@ -9,7 +9,10 @@ and should remain in private user-controlled locations.
 ## Python, Click, SQLite, And uv
 
 Python 3.12+, Click, SQLite, and `uv` are the core project contract. The repo
-uses a `src/` layout, packaged migrations, and pytest coverage.
+uses a `src/` layout, packaged migrations, and pytest coverage. Base owns
+workspace orchestration for this uv-managed project through the
+`python.manager: uv` manifest setting and command-level `runner: uv`; uv still
+owns dependency resolution and the project-local `.venv`.
 
 ## Base-Style Runtime
 
