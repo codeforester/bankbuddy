@@ -22,9 +22,10 @@ section is `Unreleased`.
 
 ## Recent Major Changes
 
-- Financial intelligence v2 architecture review, keeping the `bankbuddy` name
+- Financial intelligence v2 architecture docs, keeping the `bankbuddy` name
   while moving the target model toward documents, entities, observations, and
-  relationships.
+  relationships. Active design docs are the vision, architecture, and open
+  questions documents.
 - Prospective relicensing from MIT to AGPL-3.0-or-later.
 - Canonical data-home layout with `database/`, `bank/`, and `tax/` directories.
 - First TaxBuddy CLI slice and `tax_documents` metadata index.

@@ -11,10 +11,13 @@
 - `base_manifest.yaml` is the Base project contract. It declares BankBuddy as
   a uv-managed Python project and routes selected project commands through
   Base's `runner: uv` support.
-- `bank_buddy_spec.md` is the broader design and architecture specification.
-- `docs/financial_intelligence_architecture_review.md` is the current v2
-  architecture direction for evolving BankBuddy into a local-first personal
-  financial intelligence platform.
+- `bank_buddy_spec.md` is the original banking-focused design specification.
+- `docs/financial_intelligence_vision.md` is the product north star for the
+  broader local-first personal financial intelligence platform.
+- `docs/financial_intelligence_architecture.md` is the current v2 architecture
+  direction.
+- `docs/financial_intelligence_open_questions.md` tracks unresolved design
+  topics.
 
 ## Runtime Model
 

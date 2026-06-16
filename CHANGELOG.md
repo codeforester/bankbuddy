@@ -9,6 +9,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Changed
 
+- Consolidated the financial intelligence design docs into a current vision,
+  canonical architecture, and open-questions set.
 - Declared BankBuddy as a uv-managed Base project and routed Base test/run
   commands through Base's uv runner contract.
 - Moved the README license notice out of the opening project summary.
