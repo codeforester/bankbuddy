@@ -15,8 +15,8 @@ section is `Unreleased`.
 - Banking CLI commands for banks, accounts, statement refs, imports,
   transactions, categories, reports, exports, storage migration, and status.
 - Side-by-side `bb` CLI for v2 financial intelligence initialization,
-  foundation status, storage readiness, generic document import, and `BB_`
-  schema visibility.
+  foundation status, storage readiness, generic document import, document
+  inventory inspection, and `BB_` schema visibility.
 - Supported banking imports for Bank of America PDF/CSV, Apple Card PDF, ICICI
   `.xls`, and HDFC `.xls`.
 - Statement inventory and statement coverage auditing.
@@ -35,6 +35,8 @@ section is `Unreleased`.
   without depending on the legacy `bankbuddy` command surface.
 - Generic `bb documents import` for parser-free explicit-file intake into
   `BB_DOCUMENT` and `BB_DOCUMENT_OBJECT` with SHA-256 canonical storage keys.
+- `bb documents list/show` for read-only inspection of generic v2 document and
+  canonical object metadata.
 - Prospective relicensing from MIT to AGPL-3.0-or-later.
 - Canonical data-home layout with `database/`, `bank/`, and `tax/` directories.
 - First TaxBuddy CLI slice and `tax_documents` metadata index.

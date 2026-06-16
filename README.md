@@ -47,6 +47,8 @@ bb init
 bb status
 bb documents import --dry-run --file path/to/document.pdf
 bb documents import --file path/to/document.pdf
+bb documents list
+bb documents show 1
 bankbuddy --help
 bankbuddy status
 bankbuddy init
@@ -170,6 +172,8 @@ Use `bb documents import` for parser-free v2 document intake. It hashes the
 file, records a `BB_DOCUMENT`, stores a canonical object under
 `financial/canonical`, and leaves bank-specific parsing or inference for later
 workflows.
+Use `bb documents list` and `bb documents show DOCUMENT_ID` to inspect the
+generic v2 document inventory and canonical object metadata.
 
 Switch the current shell by exporting `BANKBUDDY_ENV`:
 

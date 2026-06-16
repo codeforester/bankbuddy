@@ -162,6 +162,51 @@ class FinancialIntelligenceDAO:
             return None
         return _document_from_row(row)
 
+    def get_document(self, document_id: int) -> DocumentRecord | None:
+        """Return one v2 document by id."""
+
+        row = self._conn.execute(
+            """
+            select
+                document_id,
+                file_hash,
+                original_file_name,
+                canonical_file_name,
+                source_uri,
+                document_type,
+                jurisdiction_code,
+                tax_year,
+                document_status
+            from BB_DOCUMENT
+            where document_id = ?
+            """,
+            (document_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return _document_from_row(row)
+
+    def list_documents(self) -> list[DocumentRecord]:
+        """Return v2 documents ordered by id."""
+
+        rows = self._conn.execute(
+            """
+            select
+                document_id,
+                file_hash,
+                original_file_name,
+                canonical_file_name,
+                source_uri,
+                document_type,
+                jurisdiction_code,
+                tax_year,
+                document_status
+            from BB_DOCUMENT
+            order by document_id
+            """
+        ).fetchall()
+        return [_document_from_row(row) for row in rows]
+
     def create_entity(self, record: EntityCreate) -> EntityRecord:
         """Create a v2 entity row."""
 

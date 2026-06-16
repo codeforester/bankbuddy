@@ -44,6 +44,14 @@ class DocumentImportResult:
     duplicate: bool
 
 
+@dataclass(frozen=True)
+class DocumentSummary:
+    """Read-only document summary with canonical object metadata."""
+
+    document: DocumentRecord
+    canonical_object: DocumentObjectRecord | None
+
+
 class DocumentImportError(ValueError):
     """Raised when a generic document import cannot be planned or completed."""
 
@@ -123,6 +131,44 @@ def import_document(paths: AppPaths, source_path: Path) -> DocumentImportResult:
         document_object=document_object,
         duplicate=document_existed and object_existed,
     )
+
+
+def list_documents(paths: AppPaths) -> list[DocumentSummary]:
+    """Return imported v2 documents with canonical object metadata."""
+
+    if not paths.database.exists():
+        return []
+
+    with connect_database(paths) as conn:
+        documents = FinancialIntelligenceDAO(conn)
+        storage = FinancialStorageDAO(conn)
+        return [
+            DocumentSummary(
+                document=document,
+                canonical_object=storage.find_canonical_document_object(
+                    document.document_id
+                ),
+            )
+            for document in documents.list_documents()
+        ]
+
+
+def get_document_summary(paths: AppPaths, document_id: int) -> DocumentSummary | None:
+    """Return one imported v2 document with canonical object metadata."""
+
+    if not paths.database.exists():
+        return None
+
+    with connect_database(paths) as conn:
+        documents = FinancialIntelligenceDAO(conn)
+        storage = FinancialStorageDAO(conn)
+        document = documents.get_document(document_id)
+        if document is None:
+            return None
+        return DocumentSummary(
+            document=document,
+            canonical_object=storage.find_canonical_document_object(document_id),
+        )
 
 
 def hash_file(path: Path) -> str:

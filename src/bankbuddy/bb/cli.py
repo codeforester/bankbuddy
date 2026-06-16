@@ -10,7 +10,10 @@ import click
 from bankbuddy import __version__
 from bankbuddy.database import initialize_database
 from bankbuddy.bb.documents import DocumentImportError
+from bankbuddy.bb.documents import DocumentSummary
+from bankbuddy.bb.documents import get_document_summary
 from bankbuddy.bb.documents import import_document
+from bankbuddy.bb.documents import list_documents
 from bankbuddy.bb.documents import plan_document_import
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.bb.storage import ensure_financial_storage_dirs
@@ -169,6 +172,31 @@ def documents() -> None:
     """Manage v2 documents."""
 
 
+@documents.command("list")
+@click.pass_context
+def documents_list(ctx: click.Context) -> None:
+    """List imported v2 documents."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    rows = list_documents(paths)
+    render_document_table(rows)
+
+
+@documents.command("show")
+@click.argument("document_id", type=int)
+@click.pass_context
+def documents_show(ctx: click.Context, document_id: int) -> None:
+    """Show one imported v2 document."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    summary = get_document_summary(paths, document_id)
+    if summary is None:
+        raise click.ClickException(f"Document not found: {document_id}")
+    render_document_summary(summary)
+
+
 @documents.command("import")
 @click.option("--dry-run", is_flag=True, help="Plan the import without writes.")
 @click.option(
@@ -228,6 +256,92 @@ def _print_document_import_plan(plan, *, dry_run: bool) -> None:
     click.echo(f"Size: {plan.byte_size} bytes")
     click.echo(f"Media type: {plan.media_type}")
     click.echo(f"Canonical object: {plan.canonical_relative_path}")
+
+
+def render_document_table(rows: list[DocumentSummary]) -> None:
+    """Render v2 documents as a compact pretty table."""
+
+    table = [
+        [
+            str(row.document.document_id),
+            row.document.original_file_name,
+            row.document.document_status,
+            str(row.canonical_object.byte_size)
+            if row.canonical_object and row.canonical_object.byte_size is not None
+            else "-",
+            row.canonical_object.media_type if row.canonical_object else "-",
+            row.document.file_hash[:12],
+        ]
+        for row in rows
+    ]
+    render_pretty_table(
+        ["ID", "File", "Status", "Size", "Media Type", "SHA-256"],
+        table,
+        align_right={0, 3},
+    )
+
+
+def render_document_summary(summary: DocumentSummary) -> None:
+    """Render one v2 document detail view."""
+
+    document = summary.document
+    canonical_object = summary.canonical_object
+    click.echo(f"Document ID: {document.document_id}")
+    click.echo(f"Original file: {document.original_file_name}")
+    click.echo(f"SHA-256: {document.file_hash}")
+    click.echo(f"Status: {document.document_status}")
+    click.echo(f"Type: {_display_value(document.document_type)}")
+    click.echo(f"Jurisdiction: {_display_value(document.jurisdiction_code)}")
+    click.echo(f"Tax year: {_display_value(document.tax_year)}")
+    if canonical_object is None:
+        click.echo("Canonical object ID: -")
+        click.echo("Canonical object: -")
+        return
+    click.echo(f"Canonical object ID: {canonical_object.document_object_id}")
+    click.echo(f"Canonical object: financial/canonical/{canonical_object.object_key}")
+    click.echo(f"Media type: {_display_value(canonical_object.media_type)}")
+    click.echo(f"Size: {_display_value(canonical_object.byte_size)} bytes")
+
+
+def render_pretty_table(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    align_right: set[int] | None = None,
+) -> None:
+    """Render a small pretty table with vertical separators."""
+
+    align_right = align_right or set()
+    widths = [
+        max(len(headers[index]), *(len(row[index]) for row in rows))
+        for index in range(len(headers))
+    ]
+    click.echo(_pretty_row(headers, widths, align_right=set()))
+    click.echo("-+-".join("-" * width for width in widths))
+    for row in rows:
+        click.echo(_pretty_row(row, widths, align_right=align_right))
+
+
+def _pretty_row(
+    values: list[str],
+    widths: list[int],
+    *,
+    align_right: set[int],
+) -> str:
+    cells = []
+    for index, value in enumerate(values):
+        width = widths[index]
+        if index in align_right:
+            cells.append(value.rjust(width))
+        else:
+            cells.append(value.ljust(width))
+    return " | ".join(cells)
+
+
+def _display_value(value) -> str:
+    if value is None:
+        return "-"
+    return str(value)
 
 
 def _v2_storage_ready(paths) -> bool:

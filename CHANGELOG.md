@@ -32,6 +32,8 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bb documents list` and `bb documents show DOCUMENT_ID` for read-only
+  inspection of generic v2 document records and canonical object metadata.
 - Added `bb documents import --dry-run --file ...` and
   `bb documents import --file ...` for parser-free v2 document intake with
   SHA-256 canonical object storage and idempotent duplicate handling.
