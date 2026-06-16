@@ -45,6 +45,8 @@ Activate the project shell once, then run the CLI directly:
 basectl activate bankbuddy
 bb init
 bb status
+bb documents import --dry-run --file path/to/document.pdf
+bb documents import --file path/to/document.pdf
 bankbuddy --help
 bankbuddy status
 bankbuddy init
@@ -163,6 +165,11 @@ bankbuddy status
 Use `bb init` for the v2 financial intelligence foundation. It applies the
 current SQLite migrations and prepares the `financial/` storage roots used by
 document-first workflows.
+
+Use `bb documents import` for parser-free v2 document intake. It hashes the
+file, records a `BB_DOCUMENT`, stores a canonical object under
+`financial/canonical`, and leaves bank-specific parsing or inference for later
+workflows.
 
 Switch the current shell by exporting `BANKBUDDY_ENV`:
 
