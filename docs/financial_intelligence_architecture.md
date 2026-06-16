@@ -1,21 +1,17 @@
-# BankBuddy Financial Intelligence Architecture Review
+# BankBuddy Financial Intelligence Architecture
 
 **Date:** 2026-06-15
-**Status:** Architecture review and implementation proposal
-**Inputs reviewed:**
+**Status:** Current v2 architecture direction
+**Companion documents:**
 
 - `docs/financial_intelligence_vision.md`
-- `docs/financial_intelligence_architecture_spec.md`
-- `docs/assetbuddy_design.md`
-- `bank_buddy_spec.md`
-- `.ai-context/ARCHITECTURE.md`
-- Current `src/bankbuddy/` modules, migrations, and CLI surfaces
+- `docs/financial_intelligence_open_questions.md`
 
-## Executive Recommendation
+## Executive Summary
 
 BankBuddy should evolve into the broader personal financial intelligence
-platform described in the new design documents, but it should remain in the
-existing BankBuddy repository.
+platform described in the product vision, while remaining in the existing
+BankBuddy repository and keeping the `bankbuddy` CLI name.
 
 The right target architecture is not a banking app with more tables. It is a
 local-first evidence graph:
@@ -34,9 +30,9 @@ data can be discarded, the cleanest path is a deliberate schema reset into a
 versioned v2 model, not a long compatibility migration that preserves every old
 bank/account assumption.
 
-## Review Decisions
+## Architecture Decisions
 
-The following decisions were accepted after review:
+The following decisions define the current v2 direction:
 
 - Keep the product and CLI name as `bankbuddy`.
 - Use `Document`, `Entity`, `Observation`, and `Relationship` as the conceptual
@@ -1286,7 +1282,7 @@ sensitive.
 Mitigation: classify attribute sensitivity, avoid raw text in normal logs, mask
 CLI output, and defer durable text indexing until encryption is designed.
 
-## 15. Resolved Decisions and Remaining Topics
+## 15. Resolved Decisions
 
 Resolved decisions:
 
@@ -1302,25 +1298,16 @@ Resolved decisions:
    encryption/keychain design as later hardening.
 8. Start net-worth reporting with native-currency buckets only.
 
-Remaining discussion topics:
-
-1. Whether `infer` needs to be user-facing, or whether import plus inspect is
-   sufficient for the early product.
-2. Whether raw extracted text should be stored by default, stored only for
-   selected document types, or stored only as an optional debug/audit feature.
-3. The exact managed storage layout for successful, failed, duplicate, and
-   review-needed documents.
-4. The initial set of `BB_ENTITY_ATTRIBUTE_TYPE`, `BB_RELATIONSHIP_TYPE`, and
-   `BB_OBSERVATION_TYPE` seed values.
+Open design topics are tracked in
+`docs/financial_intelligence_open_questions.md`.
 
 ## 16. Bottom Line
 
-The new design direction is sound, but it should not be implemented as
-"BankBuddy plus more tables." The right move is to preserve the proven local
-runtime and import mechanics while replacing the domain center with documents,
-entities, observations, and relationships.
+The new design direction should not be implemented as "BankBuddy plus more
+tables." The right move is to preserve the proven local runtime and import
+mechanics while replacing the domain center with documents, entities,
+observations, and relationships.
 
-I recommend approving a v2 architecture effort before implementing issue #100.
-Issue #100 should either be reframed as the first Tax Readiness slice on the new
-document/entity foundation, or postponed until the generic document and
-observation model exists.
+The next architecture implementation slice is the v2 foundation schema. TaxBuddy
+issue #100 stays paused until the generic document/entity/observation model
+exists, then it can be reframed as a Tax Readiness projection over that model.

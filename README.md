@@ -7,10 +7,9 @@ Local-first personal finance tracking.
 BankBuddy is evolving from a banking-focused CLI into a local-first personal
 financial intelligence platform. The current direction is documented in:
 
-- [Financial intelligence architecture review](docs/financial_intelligence_architecture_review.md)
 - [Financial intelligence vision](docs/financial_intelligence_vision.md)
-- [Financial intelligence architecture source spec](docs/financial_intelligence_architecture_spec.md)
-- [AssetBuddy design discussion notes](docs/assetbuddy_design.md)
+- [Financial intelligence architecture](docs/financial_intelligence_architecture.md)
+- [Financial intelligence open questions](docs/financial_intelligence_open_questions.md)
 
 ## Development
 
