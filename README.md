@@ -43,6 +43,7 @@ Activate the project shell once, then run the CLI directly:
 
 ```bash
 basectl activate bankbuddy
+bb init
 bb status
 bankbuddy --help
 bankbuddy status
@@ -154,9 +155,14 @@ which maps to `~/BankBuddy-dev`.
 Use `status` to confirm the active environment and database:
 
 ```bash
+bb init
 bb status
 bankbuddy status
 ```
+
+Use `bb init` for the v2 financial intelligence foundation. It applies the
+current SQLite migrations and prepares the `financial/` storage roots used by
+document-first workflows.
 
 Switch the current shell by exporting `BANKBUDDY_ENV`:
 

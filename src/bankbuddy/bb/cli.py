@@ -7,7 +7,9 @@ import sqlite3
 import click
 
 from bankbuddy import __version__
+from bankbuddy.database import initialize_database
 from bankbuddy.paths import resolve_app_paths
+from bankbuddy.bb.storage import ensure_financial_storage_dirs
 from bankbuddy.runtime import CliRuntime
 from bankbuddy.runtime import RuntimeConfigError
 from bankbuddy.runtime import create_runtime
@@ -108,17 +110,19 @@ def status(ctx: click.Context) -> None:
     initialized = "yes" if paths.database.exists() else "no"
     bb_table_count = len([name for name in table_names if name.startswith("BB_")])
     has_v2_foundation = BB_FOUNDATION_TABLES.issubset(table_names)
+    has_v2_storage = _v2_storage_ready(paths)
     has_legacy_tables = bool(LEGACY_TABLES.intersection(table_names))
 
     runtime.log.debug(
         "bb_status environment=%s data_home=%s database=%s initialized=%s "
-        "bb_table_count=%s v2_foundation=%s legacy_tables=%s",
+        "bb_table_count=%s v2_foundation=%s v2_storage=%s legacy_tables=%s",
         paths.environment,
         paths.root,
         paths.database,
         initialized,
         bb_table_count,
         has_v2_foundation,
+        has_v2_storage,
         has_legacy_tables,
     )
 
@@ -129,8 +133,31 @@ def status(ctx: click.Context) -> None:
     click.echo(f"Database: {paths.database}")
     click.echo(f"Initialized: {initialized}")
     click.echo(f"V2 foundation: {_yes_no(has_v2_foundation)}")
+    click.echo(f"V2 storage: {_yes_no(has_v2_storage)}")
     click.echo(f"BB tables: {bb_table_count}")
     click.echo(f"Legacy tables: {'present' if has_legacy_tables else 'absent'}")
+    if has_v2_storage:
+        click.echo(f"Financial canonical: {paths.financial_canonical}")
+        click.echo(f"Financial views: {paths.financial_views}")
+
+
+@main.command("init")
+@click.pass_context
+def init_command(ctx: click.Context) -> None:
+    """Initialize the local BankBuddy v2 app directory and database."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    initialize_database(paths)
+    ensure_financial_storage_dirs(paths)
+    runtime.log.debug(
+        "bb_init home=%s database=%s financial_canonical=%s financial_views=%s",
+        paths.root,
+        paths.database,
+        paths.financial_canonical,
+        paths.financial_views,
+    )
+    click.echo(f"Initialized BankBuddy v2 at {paths.root}")
 
 
 def _database_table_names(database_path) -> set[str]:
@@ -147,6 +174,21 @@ def _database_table_names(database_path) -> set[str]:
 
 def _yes_no(value: bool) -> str:
     return "yes" if value else "no"
+
+
+def _v2_storage_ready(paths) -> bool:
+    return all(
+        path.is_dir()
+        for path in (
+            paths.financial_inbox,
+            paths.financial_canonical,
+            paths.financial_failed,
+            paths.financial_duplicates,
+            paths.financial_review,
+            paths.financial_views,
+            paths.financial_exports,
+        )
+    )
 
 
 def runtime_from_context(ctx: click.Context) -> CliRuntime:
