@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path, PurePosixPath
 import sqlite3
 
-from bankbuddy.financial.records import (
+from bankbuddy.bb.records import (
     DocumentObjectCreate,
     DocumentObjectRecord,
     DocumentViewCreate,

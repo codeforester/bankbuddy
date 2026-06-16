@@ -4,12 +4,12 @@ import pytest
 
 from bankbuddy.database import connect_database
 from bankbuddy.database import initialize_database
-from bankbuddy.financial.dao import FinancialIntelligenceDAO
-from bankbuddy.financial.records import DocumentCreate
+from bankbuddy.bb.dao import FinancialIntelligenceDAO
+from bankbuddy.bb.records import DocumentCreate
 from bankbuddy.paths import resolve_app_paths
 
 
-def test_financial_storage_schema_seeds_roots(tmp_path) -> None:
+def test_bb_storage_schema_seeds_roots(tmp_path) -> None:
     paths = resolve_app_paths(tmp_path / "home")
 
     initialize_database(paths)
@@ -50,7 +50,7 @@ def test_financial_storage_schema_seeds_roots(tmp_path) -> None:
     }
 
 
-def test_financial_storage_paths_are_separate_from_bank_and_tax_dirs(tmp_path) -> None:
+def test_bb_storage_paths_are_separate_from_bank_and_tax_dirs(tmp_path) -> None:
     (
         _,
         _,
@@ -232,7 +232,7 @@ def test_storage_keys_reject_absolute_and_parent_traversal_paths(tmp_path) -> No
         _,
         _,
     ) = _storage_api()
-    from bankbuddy.financial.storage import validate_storage_key
+    from bankbuddy.bb.storage import validate_storage_key
 
     paths = resolve_app_paths(tmp_path / "home")
 
@@ -266,7 +266,7 @@ def test_storage_keys_reject_absolute_and_parent_traversal_paths(tmp_path) -> No
 
 
 def test_protect_managed_path_sets_read_only_modes(tmp_path) -> None:
-    from bankbuddy.financial.storage import protect_managed_path
+    from bankbuddy.bb.storage import protect_managed_path
 
     managed_file = tmp_path / "financial" / "canonical" / "object.pdf"
     managed_file.parent.mkdir(parents=True)
@@ -287,13 +287,13 @@ def test_protect_managed_path_sets_read_only_modes(tmp_path) -> None:
 
 def _storage_api():
     try:
-        from bankbuddy.financial.records import DocumentObjectCreate
-        from bankbuddy.financial.records import DocumentViewCreate
-        from bankbuddy.financial.storage import FinancialStorageDAO
-        from bankbuddy.financial.storage import FinancialStoragePathError
-        from bankbuddy.financial.storage import ensure_financial_storage_dirs
-        from bankbuddy.financial.storage import object_key_for_hash
-        from bankbuddy.financial.storage import resolve_storage_path
+        from bankbuddy.bb.records import DocumentObjectCreate
+        from bankbuddy.bb.records import DocumentViewCreate
+        from bankbuddy.bb.storage import FinancialStorageDAO
+        from bankbuddy.bb.storage import FinancialStoragePathError
+        from bankbuddy.bb.storage import ensure_financial_storage_dirs
+        from bankbuddy.bb.storage import object_key_for_hash
+        from bankbuddy.bb.storage import resolve_storage_path
     except ImportError as exc:
         pytest.fail(f"Financial storage API is not available: {exc}")
 

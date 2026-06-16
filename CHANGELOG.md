@@ -34,7 +34,10 @@ and versions are tracked in the repo-root `VERSION` file.
 
 - Added v2 financial document storage roots, document object metadata,
   generated human-readable document view metadata, path-resolution helpers,
-  and read-only managed-file guardrails under the `financial/` namespace.
+  and read-only managed-file guardrails under the `bankbuddy.bb` namespace.
+- Added the side-by-side `bb` console command and `bankbuddy.bb` source
+  namespace for financial intelligence v2 work, while leaving existing
+  `bankbuddy` and `taxbuddy` commands intact.
 - Added additive financial intelligence v2 foundation tables, seed type
   dictionaries, indexes, and DAO-based read/write helpers without dropping
   existing banking or tax tables.

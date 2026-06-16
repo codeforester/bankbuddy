@@ -5,6 +5,8 @@
 - `src/bankbuddy/` contains banking domain code, the `bankbuddy` CLI, shared
   runtime helpers, SQLite access, migrations, importers, reports, and storage
   layout code.
+- `src/bankbuddy/bb/` contains the side-by-side v2 source namespace for new
+  `BB_` schema DAOs, records, and the `bb` CLI.
 - `src/bankbuddy/tax/` contains the TaxBuddy document-readiness slice.
 - `src/bankbuddy/migrations/` contains ordered SQL migrations.
 - `tests/` contains pytest coverage and `tests/validate.sh`.
@@ -84,8 +86,10 @@ future work unless a focused issue says otherwise.
 
 ## Financial Intelligence V2 Direction
 
-The accepted v2 direction keeps the product and CLI name as `bankbuddy` while
-moving the long-term architecture toward `Document`, `Entity`, `Observation`,
+The accepted v2 direction keeps the product name as BankBuddy while introducing
+the short `bb` CLI and `bankbuddy.bb` source namespace for new v2 work. Existing
+`bankbuddy` and `taxbuddy` command surfaces stay intact during the transition.
+The long-term architecture moves toward `Document`, `Entity`, `Observation`,
 and `Relationship` foundations. New schema proposals use `BB_`-prefixed
 singular table names and prefer normalized relational tables over JSON blobs.
 

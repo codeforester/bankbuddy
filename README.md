@@ -29,6 +29,7 @@ basectl test bankbuddy
 Run uv-backed project commands through Base when you want one-command dispatch:
 
 ```bash
+basectl run bankbuddy bb -- status
 basectl run bankbuddy bankbuddy -- status
 basectl run bankbuddy taxbuddy -- status
 ```
@@ -42,6 +43,7 @@ Activate the project shell once, then run the CLI directly:
 
 ```bash
 basectl activate bankbuddy
+bb status
 bankbuddy --help
 bankbuddy status
 bankbuddy init
@@ -137,6 +139,11 @@ taxbuddy docs list --type 1099-INT
 taxbuddy docs show 1
 ```
 
+`bb` is the side-by-side v2 CLI for the financial intelligence foundation. It
+uses the additive `BB_` schema and `bankbuddy.bb` source namespace while the
+existing `bankbuddy` and `taxbuddy` commands remain available during the
+transition.
+
 ## Environments
 
 BankBuddy keeps separate local data homes for named environments. Outside an
@@ -147,6 +154,7 @@ which maps to `~/BankBuddy-dev`.
 Use `status` to confirm the active environment and database:
 
 ```bash
+bb status
 bankbuddy status
 ```
 

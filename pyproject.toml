@@ -13,6 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
+bb = "bankbuddy.bb.cli:main"
 bankbuddy = "bankbuddy.cli:main"
 taxbuddy = "bankbuddy.tax.cli:main"
 

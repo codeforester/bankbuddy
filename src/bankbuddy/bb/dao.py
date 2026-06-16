@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from bankbuddy.financial.records import (
+from bankbuddy.bb.records import (
     DocumentCreate,
     DocumentRecord,
     EntityAttributeCreate,

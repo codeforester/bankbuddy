@@ -9,6 +9,7 @@ basectl setup bankbuddy
 basectl check bankbuddy
 basectl doctor bankbuddy
 basectl test bankbuddy
+basectl run bankbuddy bb -- status
 basectl run bankbuddy bankbuddy -- status
 basectl run bankbuddy taxbuddy -- status
 basectl activate bankbuddy
@@ -25,6 +26,19 @@ into `uv run` through `runner: uv`.
 
 `basectl activate bankbuddy` enters a project shell and sources
 `.base/activate.sh`, which defaults `BANKBUDDY_ENV=dev` when unset.
+
+## bb CLI
+
+Run the v2 financial intelligence CLI with:
+
+```bash
+bb --help
+bb status
+```
+
+`bb` is the side-by-side command surface for new `BB_` schema work. It should
+grow new document/entity/observation workflows while the legacy command
+surfaces remain available.
 
 ## BankBuddy CLI
 
