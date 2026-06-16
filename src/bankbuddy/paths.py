@@ -37,6 +37,13 @@ class AppPaths:
     tax_processed: Path
     tax_duplicates: Path
     tax_exports: Path
+    financial_inbox: Path
+    financial_canonical: Path
+    financial_failed: Path
+    financial_duplicates: Path
+    financial_review: Path
+    financial_views: Path
+    financial_exports: Path
     database: Path
 
 
@@ -96,6 +103,13 @@ def resolve_app_paths(
             tax_processed=resolved_root / "tax" / "processed",
             tax_duplicates=resolved_root / "tax" / "duplicates",
             tax_exports=resolved_root / "tax" / "exports",
+            financial_inbox=resolved_root / "financial" / "inbox",
+            financial_canonical=resolved_root / "financial" / "canonical",
+            financial_failed=resolved_root / "financial" / "failed",
+            financial_duplicates=resolved_root / "financial" / "duplicates",
+            financial_review=resolved_root / "financial" / "review",
+            financial_views=resolved_root / "financial" / "views",
+            financial_exports=resolved_root / "financial" / "exports",
             database=resolved_root / "database" / DATABASE_NAME,
         )
 
@@ -111,6 +125,13 @@ def resolve_app_paths(
         tax_processed=resolved_root / "tax" / "processed",
         tax_duplicates=resolved_root / "tax" / "duplicates",
         tax_exports=resolved_root / "tax" / "exports",
+        financial_inbox=resolved_root / "financial" / "inbox",
+        financial_canonical=resolved_root / "financial" / "canonical",
+        financial_failed=resolved_root / "financial" / "failed",
+        financial_duplicates=resolved_root / "financial" / "duplicates",
+        financial_review=resolved_root / "financial" / "review",
+        financial_views=resolved_root / "financial" / "views",
+        financial_exports=resolved_root / "financial" / "exports",
         database=resolved_root / DATABASE_NAME,
     )
 
@@ -128,6 +149,13 @@ def ensure_app_dirs(paths: AppPaths) -> None:
     paths.tax_processed.mkdir(parents=True, exist_ok=True)
     paths.tax_duplicates.mkdir(parents=True, exist_ok=True)
     paths.tax_exports.mkdir(parents=True, exist_ok=True)
+    paths.financial_inbox.mkdir(parents=True, exist_ok=True)
+    paths.financial_canonical.mkdir(parents=True, exist_ok=True)
+    paths.financial_failed.mkdir(parents=True, exist_ok=True)
+    paths.financial_duplicates.mkdir(parents=True, exist_ok=True)
+    paths.financial_review.mkdir(parents=True, exist_ok=True)
+    paths.financial_views.mkdir(parents=True, exist_ok=True)
+    paths.financial_exports.mkdir(parents=True, exist_ok=True)
 
 
 def _resolve_layout(root: Path, layout: AppLayoutMode) -> AppLayout:

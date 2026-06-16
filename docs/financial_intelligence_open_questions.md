@@ -50,28 +50,33 @@ Current bias:
   needed for tests, provenance, or inspect commands.
 - Keep debug logs and normal CLI output free of raw document content.
 
-## Managed Document Storage Layout
+## Managed Document View Reconciliation
 
-BankBuddy already moves completed imports into managed storage. The v2 model
-needs a generic document layout that works for banking, tax, investment,
-property, insurance, failed imports, duplicates, and review-needed documents.
+BankBuddy v2 separates authoritative canonical document objects from generated
+human-readable views. This keeps the database and canonical store authoritative
+while preserving the transparent browsable filesystem experience that made v1
+easy to understand.
 
 Open questions:
 
-- What is the exact directory layout for successful documents?
-- Should failed documents live under a shared failure area or under a
-  domain-specific path?
-- Should exact duplicates continue to be preserved under a duplicates
-  directory, or eventually be deleted after recording the duplicate attempt?
-- How should review-needed documents be named and grouped?
+- How should BankBuddy detect that a user edited, moved, or deleted generated
+  view copies?
+- Should view reconciliation run automatically during status/import, or only
+  through an explicit inspect/repair command?
+- What should the repair UX look like when a view is missing but the canonical
+  object is intact?
+- Should exact duplicates continue to be preserved under the v2 duplicates root,
+  or eventually be deleted after recording the duplicate attempt?
 
 Current bias:
 
-- Preserve source documents after every completed import attempt.
+- Keep `financial/canonical` as the source of truth.
+- Treat `financial/views` as generated copies that can be rebuilt.
+- Preserve source documents after every completed import attempt by recording a
+  canonical object or managed failed/duplicate object.
 - Keep duplicate preservation for now because it is useful while the product is
   still young.
-- Store canonical paths in the database, but keep directory-shape assumptions
-  in path/layout services rather than spreading them through domain logic.
+- Use explicit inspect/repair commands before adding automatic repair behavior.
 
 ## Type Dictionary Seed Values
 

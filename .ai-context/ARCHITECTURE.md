@@ -46,6 +46,9 @@ New data homes use:
 - `bank/inbox`, `bank/processed`, `bank/duplicates`, and `bank/exports` for
   banking statements and exports.
 - Matching `tax/` folders for tax document workflows.
+- `financial/inbox`, `financial/canonical`, `financial/failed`,
+  `financial/duplicates`, `financial/review`, `financial/views`, and
+  `financial/exports` for v2 document-first workflows.
 
 ## Banking Import Model
 
@@ -91,3 +94,9 @@ exists. Early v2 work should add `BB_` foundation tables beside existing legacy
 tables, keep new SQL centralized behind DAO modules, and focus on generic
 document storage/import, provenance, and inspect/report foundations before
 adding a user-facing infer workflow.
+
+V2 document storage should treat `financial/canonical` as the source of truth
+and `financial/views` as generated human-readable copies. Domain tables should
+link to `BB_DOCUMENT`, `BB_DOCUMENT_OBJECT`, or `BB_DOCUMENT_VIEW` rather than
+storing filesystem paths directly. The legacy `bank/` and `tax/` trees remain
+available for v1 workflows while v2 matures side by side.

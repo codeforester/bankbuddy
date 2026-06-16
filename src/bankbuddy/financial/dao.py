@@ -118,19 +118,17 @@ class FinancialIntelligenceDAO:
                 file_hash,
                 original_file_name,
                 canonical_file_name,
-                storage_path,
                 source_uri,
                 document_type,
                 jurisdiction_code,
                 tax_year,
                 document_status
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.file_hash,
                 record.original_file_name,
                 record.canonical_file_name,
-                record.storage_path,
                 record.source_uri,
                 record.document_type,
                 record.jurisdiction_code,
@@ -150,7 +148,6 @@ class FinancialIntelligenceDAO:
                 file_hash,
                 original_file_name,
                 canonical_file_name,
-                storage_path,
                 source_uri,
                 document_type,
                 jurisdiction_code,
@@ -327,7 +324,6 @@ def _document_from_row(row: sqlite3.Row) -> DocumentRecord:
         file_hash=str(row["file_hash"]),
         original_file_name=str(row["original_file_name"]),
         canonical_file_name=row["canonical_file_name"],
-        storage_path=row["storage_path"],
         source_uri=row["source_uri"],
         document_type=row["document_type"],
         jurisdiction_code=row["jurisdiction_code"],

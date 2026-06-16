@@ -57,7 +57,6 @@ class DocumentCreate:
     file_hash: str
     original_file_name: str
     canonical_file_name: str | None = None
-    storage_path: str | None = None
     source_uri: str | None = None
     document_type: str | None = None
     jurisdiction_code: str | None = None
@@ -70,6 +69,65 @@ class DocumentRecord(DocumentCreate):
     """Stored v2 document record."""
 
     document_id: int = 0
+
+
+@dataclass(frozen=True)
+class StorageRootRecord:
+    """A configured v2 document storage root."""
+
+    storage_root_id: int
+    storage_root_code: str
+    root_kind: str
+    base_path_key: str
+    relative_root: str
+    permissions_mode: str
+    active: bool
+
+
+@dataclass(frozen=True)
+class DocumentObjectCreate:
+    """Input data for a stored document object."""
+
+    document_id: int
+    storage_root_code: str
+    object_key: str
+    object_role: str
+    content_hash: str
+    byte_size: int | None = None
+    media_type: str | None = None
+    original_file_name: str | None = None
+
+
+@dataclass(frozen=True)
+class DocumentObjectRecord(DocumentObjectCreate):
+    """Stored document object metadata."""
+
+    document_object_id: int = 0
+    storage_root_id: int = 0
+
+
+@dataclass(frozen=True)
+class DocumentViewCreate:
+    """Input data for a generated human-readable document view."""
+
+    document_id: int
+    document_object_id: int
+    storage_root_code: str
+    view_name: str
+    view_key: str
+    materialization_kind: str = "copy"
+    expected_hash: str | None = None
+    byte_size: int | None = None
+    status: str = "current"
+    last_materialized_at: str | None = None
+
+
+@dataclass(frozen=True)
+class DocumentViewRecord(DocumentViewCreate):
+    """Stored generated document view metadata."""
+
+    document_view_id: int = 0
+    storage_root_id: int = 0
 
 
 @dataclass(frozen=True)
