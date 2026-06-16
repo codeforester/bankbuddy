@@ -25,10 +25,10 @@ be retained: local SQLite, canonical storage, dry-run imports, parser staging,
 file hashing, import attempt history, integer money storage, Base-style CLI
 runtime, environment-specific data homes, and a growing parser test suite.
 
-The current architecture should not constrain the next design. Because existing
-data can be discarded, the cleanest path is a deliberate schema reset into a
-versioned v2 model, not a long compatibility migration that preserves every old
-bank/account assumption.
+The current architecture should not constrain the next design. The v2 model
+should be introduced as an additive foundation beside the existing banking and
+tax tables, then adopted workflow by workflow. Existing legacy tables do not
+need to be discarded just to make room for the new architecture.
 
 ## Architecture Decisions
 
@@ -37,7 +37,8 @@ The following decisions define the current v2 direction:
 - Keep the product and CLI name as `bankbuddy`.
 - Use `Document`, `Entity`, `Observation`, and `Relationship` as the conceptual
   foundation, while allowing details to evolve during implementation.
-- Use a v2 schema reset rather than compatibility migrations.
+- Introduce the v2 foundation schema additively beside the existing legacy
+  tables. Do not silently discard existing tables or data.
 - Move imported documents into managed storage when an import activity finishes,
   whether the import succeeds or fails.
 - Treat future `infer` work as read-only with respect to source documents unless
@@ -61,6 +62,8 @@ The schema should also follow these conventions:
   filters as part of each migration.
 - Attribute values should be typed through `BB_ENTITY_ATTRIBUTE_TYPE` rather
   than stored as arbitrary key names.
+- New v2 read/write paths should use Data Access Objects so SQL stays
+  centralized instead of being buried throughout command and service code.
 
 ## 1. Current-State Assessment
 
@@ -151,10 +154,10 @@ schema.
   persistence, archive planning, and repair-sensitive legacy behavior.
 - TaxBuddy is currently a separate package slice, but the new platform wants tax
   documents to be one document family inside the same evidence graph.
-- The database migration chain assumes additive evolution. The new direction is
-  a semantic schema reset.
-- There is no repository/service layer boundary. Many modules open SQLite
-  connections directly and issue SQL inline.
+- The database migration chain supports additive evolution, which is suitable
+  for introducing v2 foundation tables beside legacy tables.
+- There is no DAO/service layer boundary. Many modules open SQLite connections
+  directly and issue SQL inline.
 
 ## 3. Proposed Target Architecture
 
@@ -432,10 +435,6 @@ BB_IMPORT_ATTEMPT(
     import_status,
     started_at,
     finished_at,
-    parser_id,
-    rows_parsed,
-    rows_imported,
-    rows_duplicate,
     error_message,
     created_at,
     updated_at
@@ -444,11 +443,10 @@ BB_IMPORT_ATTEMPT(
 BB_PARSER(
     parser_id,
     parser_name,
-    parser_family,
-    document_type,
     file_type,
-    institution_id,
-    enabled,
+    document_family,
+    default_document_type,
+    active,
     created_at,
     updated_at
 )
@@ -457,9 +455,11 @@ BB_EXTRACTION_RUN(
     extraction_run_id,
     document_id,
     parser_id,
-    extraction_method,
-    confidence,
-    status,
+    extraction_status,
+    raw_text_stored,
+    started_at,
+    finished_at,
+    error_message,
     created_at,
     updated_at
 )
@@ -1051,31 +1051,21 @@ The highest-value family UI is likely:
 
 ### Recommendation
 
-Use a deliberate v2 schema reset.
+Introduce the v2 foundation schema additively.
 
-Because backward compatibility is not required and existing data can be
-discarded, avoid a fragile migration that tries to preserve old semantics.
-However, do not silently destroy existing data homes. The migration path should
-be explicit.
+Backward-compatible behavior is not the primary design constraint, but existing
+tables do not need to be dropped just to begin the v2 architecture. The safer
+path is to add `BB_` foundation tables beside the current schema, then migrate
+or replace workflows deliberately as the v2 document/entity/observation model
+becomes usable.
 
-Possible command:
+The first v2 database slice should:
 
-```text
-bankbuddy storage reset-schema --to financial-intelligence-v2 --dry-run
-bankbuddy storage reset-schema --to financial-intelligence-v2 --apply
-```
-
-The dry run should report:
-
-- current schema version;
-- tables that will be replaced;
-- files left untouched;
-- database backup/export recommendation;
-- new schema version.
-
-Because compatibility is explicitly not required, this reset can discard
-transaction/account rows. The command must still avoid accidental data loss by
-requiring an explicit `--apply` mode and clear user-facing output.
+- leave existing banking and tax tables intact;
+- create `BB_` foundation tables through an ordinary ordered migration;
+- seed minimal type dictionaries;
+- add indexes with the migration;
+- introduce DAO-based read/write helpers for new v2 code.
 
 ### Retain
 
@@ -1083,7 +1073,7 @@ requiring an explicit `--apply` mode and clear user-facing output.
 - `pyproject.toml` / `uv` workflow.
 - Base-style runtime.
 - `paths.py` environment semantics.
-- SQLite migration mechanism, possibly moved under `db/`.
+- SQLite migration mechanism, with v2 SQL kept in ordered migrations.
 - Current parser test fixtures and parser-specific knowledge.
 - Currency minor-unit discipline.
 - CLI rendering style.
@@ -1138,7 +1128,7 @@ Build:
 Validation:
 
 - migration tests;
-- repository tests;
+- DAO tests;
 - document import dry-run and real import tests using synthetic fixtures.
 - index presence tests for key report and join paths.
 
@@ -1239,7 +1229,7 @@ Build:
 |---|---|---|---|
 | Runtime | Base-style CLI setup, logging, env selection | Nothing material | Move to `core/` later. |
 | Paths | Environment homes, canonical layout | Bank/tax-only assumption as final shape | Add generic `documents/` roots. |
-| Database | Migration runner, SQLite connection discipline | Old schema as canonical | Introduce explicit v2 reset/migrations. |
+| Database | Migration runner, SQLite connection discipline | Old schema as canonical | Introduce additive `BB_` v2 migrations and DAO boundaries. |
 | Imports | Parsers, dry-run, hash, staging, duplicate logic | Parser-to-account direct coupling | Split into document service, parser service, inference service. |
 | Accounts | Account setup, account refs, masking | Bank as root concept | Generalize bank to institution and account to typed entity. |
 | Transactions | Minor units, categories, filters, reports | Account-only worldview | Reference documents and v2 accounts. |
@@ -1289,7 +1279,7 @@ Resolved decisions:
 1. Keep the user-facing product and CLI name as `BankBuddy` / `bankbuddy`.
 2. Use `Document/Entity/Observation/Relationship` as the foundation, with
    details refined during implementation.
-3. Use a schema reset path instead of compatibility migrations.
+3. Introduce the v2 foundation schema additively beside existing legacy tables.
 4. Move documents into managed storage after completed import attempts,
    including failures.
 5. Pause issue #100 until the v2 document/entity model exists.

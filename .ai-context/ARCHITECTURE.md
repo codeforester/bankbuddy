@@ -87,6 +87,7 @@ and `Relationship` foundations. New schema proposals use `BB_`-prefixed
 singular table names and prefer normalized relational tables over JSON blobs.
 
 TaxBuddy issue #100 is paused until the v2 document/entity/observation model
-exists. Early v2 work should focus on a schema reset path, generic document
-storage/import, provenance, and inspect/report foundations before adding a
-user-facing infer workflow.
+exists. Early v2 work should add `BB_` foundation tables beside existing legacy
+tables, keep new SQL centralized behind DAO modules, and focus on generic
+document storage/import, provenance, and inspect/report foundations before
+adding a user-facing infer workflow.

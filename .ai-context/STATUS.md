@@ -40,8 +40,8 @@ section is `Unreleased`.
 
 TaxBuddy expected-form gap detection and annual readiness summaries are paused
 until the financial intelligence v2 document/entity/observation foundation
-exists. The next architectural implementation area should be issue-backed v2
-foundation work, not issue #100 as originally scoped.
+exists. The active architectural implementation area is additive v2 foundation
+work with DAO-based database access, not issue #100 as originally scoped.
 
 ## Validation Snapshot
 
