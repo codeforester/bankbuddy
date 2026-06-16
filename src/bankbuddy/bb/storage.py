@@ -110,6 +110,40 @@ class FinancialStorageDAO:
             **{**record.__dict__, "object_key": object_key},
         )
 
+    def find_document_object(
+        self,
+        *,
+        storage_root_code: str,
+        object_key: str,
+    ) -> DocumentObjectRecord | None:
+        """Return one document object by storage root and key."""
+
+        normalized_key = validate_storage_key(object_key)
+        row = self._conn.execute(
+            """
+            select
+                BB_DOCUMENT_OBJECT.document_object_id,
+                BB_DOCUMENT_OBJECT.document_id,
+                BB_STORAGE_ROOT.storage_root_code,
+                BB_DOCUMENT_OBJECT.object_key,
+                BB_DOCUMENT_OBJECT.object_role,
+                BB_DOCUMENT_OBJECT.content_hash,
+                BB_DOCUMENT_OBJECT.byte_size,
+                BB_DOCUMENT_OBJECT.media_type,
+                BB_DOCUMENT_OBJECT.original_file_name,
+                BB_DOCUMENT_OBJECT.storage_root_id
+            from BB_DOCUMENT_OBJECT
+            join BB_STORAGE_ROOT using (storage_root_id)
+            where
+                BB_STORAGE_ROOT.storage_root_code = ?
+                and BB_DOCUMENT_OBJECT.object_key = ?
+            """,
+            (storage_root_code, normalized_key),
+        ).fetchone()
+        if row is None:
+            return None
+        return _document_object_from_row(row)
+
     def create_document_view(
         self,
         record: DocumentViewCreate,
@@ -237,4 +271,19 @@ def _storage_root_from_row(row: sqlite3.Row) -> StorageRootRecord:
         relative_root=str(row["relative_root"]),
         permissions_mode=str(row["permissions_mode"]),
         active=bool(row["active"]),
+    )
+
+
+def _document_object_from_row(row: sqlite3.Row) -> DocumentObjectRecord:
+    return DocumentObjectRecord(
+        document_object_id=int(row["document_object_id"]),
+        document_id=int(row["document_id"]),
+        storage_root_id=int(row["storage_root_id"]),
+        storage_root_code=str(row["storage_root_code"]),
+        object_key=str(row["object_key"]),
+        object_role=str(row["object_role"]),
+        content_hash=str(row["content_hash"]),
+        byte_size=row["byte_size"],
+        media_type=row["media_type"],
+        original_file_name=row["original_file_name"],
     )

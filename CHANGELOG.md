@@ -32,6 +32,9 @@ and versions are tracked in the repo-root `VERSION` file.
 
 ### Added
 
+- Added `bb documents import --dry-run --file ...` and
+  `bb documents import --file ...` for parser-free v2 document intake with
+  SHA-256 canonical object storage and idempotent duplicate handling.
 - Added `bb init` and v2 storage readiness output in `bb status`, so the v2
   command surface can initialize migrations and financial storage roots
   independently of the legacy `bankbuddy` CLI.

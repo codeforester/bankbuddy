@@ -35,12 +35,16 @@ Run the v2 financial intelligence CLI with:
 bb --help
 bb init
 bb status
+bb documents import --dry-run --file path/to/document.pdf
+bb documents import --file path/to/document.pdf
 ```
 
 `bb` is the side-by-side command surface for new `BB_` schema work. It should
 grow new document/entity/observation workflows while the legacy command
 surfaces remain available. Use `bb init` to apply current migrations and
 prepare v2 `financial/` storage roots for the active data home.
+`bb documents import` is parser-free: it hashes the explicit file, records v2
+document/object metadata, and copies the canonical object into managed storage.
 
 ## BankBuddy CLI
 

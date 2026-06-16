@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import sqlite3
 
 import click
 
 from bankbuddy import __version__
 from bankbuddy.database import initialize_database
+from bankbuddy.bb.documents import DocumentImportError
+from bankbuddy.bb.documents import import_document
+from bankbuddy.bb.documents import plan_document_import
 from bankbuddy.paths import resolve_app_paths
 from bankbuddy.bb.storage import ensure_financial_storage_dirs
 from bankbuddy.runtime import CliRuntime
@@ -160,6 +164,47 @@ def init_command(ctx: click.Context) -> None:
     click.echo(f"Initialized BankBuddy v2 at {paths.root}")
 
 
+@main.group()
+def documents() -> None:
+    """Manage v2 documents."""
+
+
+@documents.command("import")
+@click.option("--dry-run", is_flag=True, help="Plan the import without writes.")
+@click.option(
+    "--file",
+    "file_path",
+    required=True,
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Document file to import.",
+)
+@click.pass_context
+def documents_import(
+    ctx: click.Context,
+    dry_run: bool,
+    file_path: Path,
+) -> None:
+    """Import one document into v2 canonical storage."""
+
+    runtime = runtime_from_context(ctx)
+    paths = resolve_app_paths(environment=runtime.environment)
+    try:
+        if dry_run:
+            plan = plan_document_import(paths, file_path)
+            _print_document_import_plan(plan, dry_run=True)
+            click.echo("Database changed: no")
+            click.echo("Files changed: none")
+            return
+        result = import_document(paths, file_path)
+    except (OSError, DocumentImportError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    _print_document_import_plan(result.plan, dry_run=False)
+    click.echo(f"Document ID: {result.document.document_id}")
+    click.echo(f"Document object ID: {result.document_object.document_object_id}")
+    click.echo(f"Duplicate: {_yes_no(result.duplicate)}")
+
+
 def _database_table_names(database_path) -> set[str]:
     if not database_path.exists():
         return set()
@@ -174,6 +219,15 @@ def _database_table_names(database_path) -> set[str]:
 
 def _yes_no(value: bool) -> str:
     return "yes" if value else "no"
+
+
+def _print_document_import_plan(plan, *, dry_run: bool) -> None:
+    click.echo(f"Dry run: {_yes_no(dry_run)}")
+    click.echo(f"File: {plan.source_path.name}")
+    click.echo(f"SHA-256: {plan.file_hash}")
+    click.echo(f"Size: {plan.byte_size} bytes")
+    click.echo(f"Media type: {plan.media_type}")
+    click.echo(f"Canonical object: {plan.canonical_relative_path}")
 
 
 def _v2_storage_ready(paths) -> bool:
